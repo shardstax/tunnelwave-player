@@ -24,6 +24,8 @@ const DEFAULT_SETTINGS = {
   autoRadio: true,
   shuffle: false,
   repeat: 'off', // off | all | one
+  seekStep: 5, // seconds for ← / →
+  volumeStep: 5, // percent for Ctrl + ↑ / ↓
   volume: 0.9,
   muted: false,
   customInstance: { type: 'piped', base: '' },
@@ -334,8 +336,12 @@ export default function App() {
     }
   });
 
+  // a ref, so fast repeated presses each build on the last one instead of a stale render
+  const volumeRef = useRef(settings.volume);
+  volumeRef.current = settings.volume;
   const changeVolume = useEvent((delta) => {
-    const volume = Math.round(Math.min(1, Math.max(0, settings.volume + delta)) * 100) / 100;
+    const volume = Math.round(Math.min(1, Math.max(0, volumeRef.current + delta)) * 100) / 100;
+    volumeRef.current = volume;
     updateSettings({ volume, muted: false });
     toast(`Volume ${Math.round(volume * 100)}%`);
   });
@@ -508,8 +514,8 @@ export default function App() {
       nexttrack: () => next(),
       previoustrack: () => prev(),
       seekto: (d) => engine.seek(d.seekTime),
-      seekbackward: (d) => engine.seek(engine.currentTime - (d.seekOffset || 10)),
-      seekforward: (d) => engine.seek(engine.currentTime + (d.seekOffset || 10)),
+      seekbackward: (d) => engine.seek(engine.currentTime - (d.seekOffset || settings.seekStep)),
+      seekforward: (d) => engine.seek(engine.currentTime + (d.seekOffset || settings.seekStep)),
     };
     for (const [action, fn] of Object.entries(handlers)) {
       try {
@@ -537,7 +543,7 @@ export default function App() {
       engine.video.removeEventListener('durationchange', sync);
       engine.video.removeEventListener('seeked', sync);
     };
-  }, [engine, next, prev]);
+  }, [engine, next, prev, settings.seekStep]);
 
   // ---------- keyboard shortcuts ----------
 
@@ -573,13 +579,13 @@ export default function App() {
     const modActions = {
       arrowright: () => next(),
       arrowleft: () => prev(),
-      arrowup: () => changeVolume(0.1),
-      arrowdown: () => changeVolume(-0.1),
+      arrowup: () => changeVolume(settings.volumeStep / 100),
+      arrowdown: () => changeVolume(-settings.volumeStep / 100),
     };
     const plainActions = {
       ' ': () => engine.toggle(),
-      arrowright: () => engine.seek(engine.currentTime + 10),
-      arrowleft: () => engine.seek(engine.currentTime - 10),
+      arrowright: () => engine.seek(engine.currentTime + settings.seekStep),
+      arrowleft: () => engine.seek(engine.currentTime - settings.seekStep),
       '/': () => searchRef.current?.focus(),
       f: () => current && toggleFavourite(current),
       s: () => toggleShuffle(),
@@ -807,7 +813,7 @@ export default function App() {
           onShowShortcuts={() => setShortcutsOpen((o) => !o)}
         />
 
-        {shortcutsOpen && <ShortcutsPopover onClose={() => setShortcutsOpen(false)} />}
+        {shortcutsOpen && <ShortcutsPopover steps={settings} onClose={() => setShortcutsOpen(false)} />}
         {quote && <QuoteCard quote={quote} onClose={() => setQuote(null)} />}
 
         <div className="toasts" aria-live="polite">

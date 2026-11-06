@@ -14,7 +14,10 @@
   <img alt="Vite" src="https://img.shields.io/badge/Vite-5-646cff?logo=vite&logoColor=white" />
   <img alt="PWA" src="https://img.shields.io/badge/PWA-installable-8b5cf6" />
   <img alt="No backend" src="https://img.shields.io/badge/backend-none-ec4899" />
+  <img alt="Built with Claude" src="https://img.shields.io/badge/built%20with-Claude-d97757" />
 </p>
+
+> **Demo project.** Tunnelwave is a demo project, built with [Claude](https://claude.ai) using [Claude Code](https://claude.com/claude-code). Try it live at **[tunnelwave.vercel.app](https://tunnelwave.vercel.app)**.
 
 ---
 
@@ -53,8 +56,8 @@
 | `Space` | Play / pause |
 | `Ctrl` + `→` | Next song |
 | `Ctrl` + `←` | Previous song |
-| `Ctrl` + `↑` / `↓` | Volume up / down |
-| `←` / `→` | Seek 10 seconds |
+| `Ctrl` + `↑` / `↓` | Volume up / down (5%, adjustable in Settings) |
+| `←` / `→` | Seek 5 seconds (adjustable in Settings) |
 | `/` | Focus search |
 | `F` | Favourite current song |
 | `S` | Shuffle |

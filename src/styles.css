@@ -1619,6 +1619,15 @@ select:focus {
   border-top: 1px solid var(--border);
 }
 
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  font-size: 14px;
+}
+
 .instance-form {
   display: flex;
   gap: 8px;

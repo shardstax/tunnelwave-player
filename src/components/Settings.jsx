@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Download, Monitor, Moon, RefreshCw, Sun, Upload, X } from 'lucide-react';
 import { discoverInstances, testInstance } from '../lib/api';
 import { ShortcutList } from './ShortcutsPopover';
+import { MOD } from '../lib/shortcuts';
 
 export default function Settings({ settings, onUpdate, source, onExport, onImport, onClose }) {
   const [inst, setInst] = useState(settings.customInstance);
@@ -68,6 +69,26 @@ export default function Settings({ settings, onUpdate, source, onExport, onImpor
             <span className="switch-track" />
             When the queue ends, keep playing suggested songs
           </label>
+          <div className="setting-row">
+            <span>Seek with ← / →</span>
+            <div className="segmented">
+              {[5, 10, 15, 30].map((n) => (
+                <button key={n} className={settings.seekStep === n ? 'is-on' : ''} onClick={() => onUpdate({ seekStep: n })}>
+                  {n}s
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="setting-row">
+            <span>Volume with {MOD} + ↑ / ↓</span>
+            <div className="segmented">
+              {[2, 5, 10, 20].map((n) => (
+                <button key={n} className={settings.volumeStep === n ? 'is-on' : ''} onClick={() => onUpdate({ volumeStep: n })}>
+                  {n}%
+                </button>
+              ))}
+            </div>
+          </div>
         </section>
 
         <section className="setting">
@@ -134,7 +155,7 @@ export default function Settings({ settings, onUpdate, source, onExport, onImpor
 
         <section className="setting">
           <h3>Keyboard shortcuts</h3>
-          <ShortcutList />
+          <ShortcutList steps={settings} />
         </section>
       </div>
     </dialog>

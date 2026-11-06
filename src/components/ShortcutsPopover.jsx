@@ -1,12 +1,12 @@
 import { useRef } from 'react';
 import { X } from 'lucide-react';
 import { useDismiss } from '../lib/hooks';
-import { SHORTCUTS } from '../lib/shortcuts';
+import { getShortcuts } from '../lib/shortcuts';
 
-export function ShortcutList() {
+export function ShortcutList({ steps }) {
   return (
     <dl className="shortcuts">
-      {SHORTCUTS.map(([key, label]) => (
+      {getShortcuts(steps).map(([key, label]) => (
         <div key={key}>
           <dt>
             <kbd>{key}</kbd>
@@ -18,7 +18,7 @@ export function ShortcutList() {
   );
 }
 
-export default function ShortcutsPopover({ onClose }) {
+export default function ShortcutsPopover({ steps, onClose }) {
   const ref = useRef(null);
   useDismiss(ref, true, onClose);
   return (
@@ -29,7 +29,7 @@ export default function ShortcutsPopover({ onClose }) {
           <X size={16} />
         </button>
       </header>
-      <ShortcutList />
+      <ShortcutList steps={steps} />
     </div>
   );
 }
