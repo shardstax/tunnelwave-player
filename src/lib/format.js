@@ -23,3 +23,15 @@ export function shuffled(items) {
   }
   return a;
 }
+
+let languageNames;
+/** "hi" → "Hindi", "zh-Hans" → "Simplified Chinese" (in the browser's language). */
+export function languageName(code) {
+  if (!code) return 'Default';
+  try {
+    languageNames ??= new Intl.DisplayNames([navigator.language, 'en'], { type: 'language' });
+    return languageNames.of(code) || code;
+  } catch {
+    return code;
+  }
+}

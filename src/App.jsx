@@ -26,6 +26,7 @@ const DEFAULT_SETTINGS = {
   repeat: 'off', // off | all | one
   seekStep: 5, // seconds for ← / →
   volumeStep: 5, // percent for Ctrl + ↑ / ↓
+  dubLanguage: '', // '' = original audio; otherwise e.g. 'hi' to prefer a Hindi dub when a video has one
   volume: 0.9,
   muted: false,
   customInstance: { type: 'piped', base: '' },
@@ -450,6 +451,7 @@ export default function App() {
     // after a page refresh, wait for the user's first click/key before playing
     // (browsers block autoplay until then anyway)
     const autoplay = navigator.userActivation ? navigator.userActivation.hasBeenActive : autoplayRef.current;
+    engine.preferredLang = settings.dubLanguage || null;
     if (current) engine.load(current, { autoplay });
     else engine.stop();
     autoplayRef.current = true;
@@ -457,6 +459,7 @@ export default function App() {
   }, [current?.uid]);
 
   useEffect(() => engine.setVolume(settings.volume, settings.muted), [engine, settings.volume, settings.muted]);
+  useEffect(() => engine.setPreferredLang(settings.dubLanguage || null), [engine, settings.dubLanguage]);
 
   const recordedRef = useRef(null);
   const onEngineState = useEvent(() => {

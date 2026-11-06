@@ -26,8 +26,31 @@ function loadYouTubeApi() {
 
 const playable = (el, mime) => !mime || el.canPlayType(mime) !== '';
 
-function pickAudio(list, el) {
-  return [...list].filter((s) => playable(el, s.mime)).sort((a, b) => b.bitrate - a.bitrate)[0] || null;
+const baseLang = (lang) => (lang || '').split('-')[0].toLowerCase();
+
+/**
+ * Videos with dubbed audio list one set of streams per language. Pick the language first
+ * (exact choice → preferred language → the original), then the best quality within it.
+ */
+function pickAudio(list, el, { lang, preferred } = {}) {
+  const ok = list.filter((s) => playable(el, s.mime));
+  const groups = [
+    lang && ok.filter((s) => s.lang === lang),
+    preferred && ok.filter((s) => baseLang(s.lang) === preferred && s.kind !== 'descriptive'),
+    ok.filter((s) => s.kind === 'original'),
+    ok.filter((s) => !s.kind),
+    ok,
+  ];
+  const group = groups.find((g) => g && g.length);
+  return group ? [...group].sort((a, b) => b.bitrate - a.bitrate)[0] : null;
+}
+
+/** One entry per language for the picker: [{ lang, kind }], original first. */
+function audioLanguages(list) {
+  const byLang = new Map();
+  for (const s of list) if (s.lang && !byLang.has(s.lang)) byLang.set(s.lang, { lang: s.lang, kind: s.kind });
+  const order = { original: 0, dubbed: 1, descriptive: 2 };
+  return [...byLang.values()].sort((a, b) => (order[a.kind] ?? 1) - (order[b.kind] ?? 1) || a.lang.localeCompare(b.lang));
 }
 
 function pickVideo(list, el) {
@@ -41,6 +64,8 @@ const INITIAL_STATE = {
   mode: 'idle', // idle | native | embed
   showVideo: false,
   source: null, // { type, base }
+  audioTracks: [], // languages on offer when a video has dubbed audio
+  audioLang: null, // language of the stream that's playing
   related: [],
   meta: null,
   error: null,
@@ -53,6 +78,8 @@ export class PlayerEngine extends EventTarget {
     this.token = 0;
     this.track = null;
     this.audioOnly = true;
+    this.preferredLang = null; // e.g. 'hi': use a Hindi dub when a video has one
+    this.chosenLang = null; // language picked by hand for the current video
     this.volume = 1;
     this.muted = false;
 
@@ -108,6 +135,7 @@ export class PlayerEngine extends EventTarget {
     this.audioOnly = audioOnly;
     this.excluded = new Set();
     this.attempts = 0;
+    this.chosenLang = null;
     this.wantPlay = autoplay;
     this.destroyEmbed();
     this.switching = true;
@@ -131,13 +159,22 @@ export class PlayerEngine extends EventTarget {
     const v = this.video;
     const videoStream = this.audioOnly ? null : pickVideo(info.video, v);
     // muxed video works as audio too, so it's the last resort for audio-only mode
-    const stream = videoStream || pickAudio(info.audio, v) || pickVideo(info.video, v);
+    const audioStream = pickAudio(info.audio, v, { lang: this.chosenLang, preferred: this.preferredLang });
+    const stream = videoStream || audioStream || pickVideo(info.video, v);
     if (!stream) {
       this.excluded.add(info.source.base);
       return this.retry(token, startAt, autoplay);
     }
 
-    this.set({ source: info.source, related: info.related, meta: info.track, showVideo: !!videoStream });
+    const audioTracks = audioLanguages(info.audio.filter((s) => playable(v, s.mime)));
+    this.set({
+      source: info.source,
+      related: info.related,
+      meta: info.track,
+      showVideo: !!videoStream,
+      audioTracks: audioTracks.length > 1 ? audioTracks : [],
+      audioLang: stream === audioStream ? audioStream.lang : null,
+    });
     if (v.src === stream.url) {
       // same file (audio/video toggle on a muxed stream): just show/hide the picture
       this.switching = false;
@@ -292,6 +329,32 @@ export class PlayerEngine extends EventTarget {
     }
     if (running) this.pause();
     else this.play();
+  }
+
+  /** Preferred dub language from Settings ('hi', 'es', … or null for the original); applies right away. */
+  setPreferredLang(code) {
+    if (code === this.preferredLang) return;
+    this.preferredLang = code;
+    const tracks = this.state.audioTracks;
+    if (this.chosenLang || !tracks.length) return;
+    const target =
+      (code && tracks.find((t) => baseLang(t.lang) === code && t.kind !== 'descriptive')) ||
+      tracks.find((t) => t.kind === 'original');
+    if (target && target.lang !== this.state.audioLang) {
+      this.setAudioLang(target.lang);
+      this.chosenLang = null; // still following the preference, not a manual pick
+    }
+  }
+
+  /** Switches the current video to another audio language, keeping the position and play state. */
+  setAudioLang(lang) {
+    if (this.state.mode !== 'native' || !this.track || lang === this.state.audioLang) return;
+    this.chosenLang = lang;
+    this.wantPlay = this.switching ? this.wantPlay : !this.video.paused;
+    const at = this.video.currentTime || 0;
+    this.switching = true;
+    this.set({ status: 'loading' });
+    return this.loadNative(this.token, at, this.wantPlay);
   }
 
   seek(seconds) {

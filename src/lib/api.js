@@ -135,6 +135,28 @@ async function request(op, exclude = new Set(), { prefer, remember = true } = {}
 
 // ---------- normalizers ----------
 
+/**
+ * Language of an audio stream, for videos with dubbed tracks.
+ * YouTube tags each stream URL with e.g. xtags=acont=dubbed:lang=hi; Piped also sends explicit fields.
+ * Returns { lang, kind } where kind is original | dubbed | descriptive | null (single-language video).
+ */
+function audioTrackOf(url, piped = {}) {
+  let lang = piped.audioTrackLocale || piped.audioTrackId?.split('.')[0] || null;
+  let kind = piped.audioTrackType?.toLowerCase() || null;
+  try {
+    const xtags = new URL(url).searchParams.get('xtags') || '';
+    for (const part of xtags.split(':')) {
+      const [k, v] = part.split('=');
+      if (k === 'lang' && !lang) lang = v;
+      if (k === 'acont' && !kind) kind = v;
+    }
+  } catch {
+    /* not a URL we can read; treat as single-language */
+  }
+  if (kind === 'secondary') kind = 'dubbed';
+  return { lang, kind: lang ? kind || 'dubbed' : null };
+}
+
 const pipedId = (url = '') => new URLSearchParams(url.split('?')[1]).get('v');
 
 const fromPiped = (item) => {
@@ -194,7 +216,12 @@ async function fetchVideo(id, exclude) {
     {
       piped: async (base) => {
         const d = await getJSON(`${base}/streams/${id}`);
-        const audio = (d.audioStreams || []).map((s) => ({ url: s.url, mime: s.mimeType, bitrate: s.bitrate || 0 }));
+        const audio = (d.audioStreams || []).map((s) => ({
+          url: s.url,
+          mime: s.mimeType,
+          bitrate: s.bitrate || 0,
+          ...audioTrackOf(s.url, s),
+        }));
         const video = (d.videoStreams || [])
           .filter((s) => !s.videoOnly && /^\d+p/.test(s.quality || ''))
           .map((s) => ({ url: s.url, mime: s.mimeType, height: parseInt(s.quality, 10) }));
@@ -211,7 +238,15 @@ async function fetchVideo(id, exclude) {
         const abs = (u) => new URL(u, base).href;
         const audio = (d.adaptiveFormats || [])
           .filter((f) => f.type?.startsWith('audio/'))
-          .map((f) => ({ url: abs(f.url), mime: f.type.split(';')[0], bitrate: Number(f.bitrate) || 0 }));
+          .map((f) => ({
+            url: abs(f.url),
+            mime: f.type.split(';')[0],
+            bitrate: Number(f.bitrate) || 0,
+            ...audioTrackOf(abs(f.url), {
+              audioTrackLocale: f.audioTrack?.id?.split('.')[0],
+              audioTrackType: f.audioTrack ? (f.audioTrack.isDefault ?? f.audioTrack.audioIsDefault ? 'original' : 'dubbed') : undefined,
+            }),
+          }));
         const video = (d.formatStreams || []).map((f) => ({
           url: abs(f.url),
           mime: f.type?.split(';')[0] || 'video/mp4',

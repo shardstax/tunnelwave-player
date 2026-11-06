@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import {
+  Check,
   Heart,
   Keyboard,
+  Languages,
   Loader2,
   Pause,
   Play,
@@ -14,8 +16,8 @@ import {
   Volume2,
   VolumeX,
 } from 'lucide-react';
-import { useEngineState, useEngineTime } from '../lib/hooks';
-import { formatTime } from '../lib/format';
+import { useDismiss, useEngineState, useEngineTime } from '../lib/hooks';
+import { formatTime, languageName } from '../lib/format';
 
 function Progress({ engine }) {
   const { time, duration } = useEngineTime(engine);
@@ -47,6 +49,62 @@ function Progress({ engine }) {
         aria-label="Seek"
       />
       <span className="time">{formatTime(duration)}</span>
+    </div>
+  );
+}
+
+/** Only shown for videos that come with dubbed audio tracks. */
+function LanguageMenu({ engine, state }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useDismiss(ref, open, () => setOpen(false));
+  const tracks = state.audioTracks;
+  if (tracks.length < 2) return null;
+  const base = (lang) => (lang || '').split('-')[0];
+  const code = base(state.audioLang).toUpperCase();
+  // 'English', not 'American English', unless two tracks share a language (e.g. Chinese)
+  const label = (lang) => languageName(tracks.filter((t) => base(t.lang) === base(lang)).length > 1 ? lang : base(lang));
+
+  return (
+    <div className="lang" ref={ref}>
+      <button
+        className={`icon-btn lang-btn ${open ? 'is-on' : ''}`}
+        onClick={() => setOpen((o) => !o)}
+        title={`Audio language: ${label(state.audioLang)}`}
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <Languages size={17} />
+        {code && <span className="lang-code">{code}</span>}
+      </button>
+      {open && (
+        <div className="lang-pop" role="menu" aria-label="Audio language">
+          <p className="label">Audio language</p>
+          <ul>
+            {tracks.map((t) => {
+              const on = t.lang === state.audioLang;
+              return (
+                <li key={t.lang}>
+                  <button
+                    role="menuitemradio"
+                    aria-checked={on}
+                    className={on ? 'is-on' : ''}
+                    onClick={() => {
+                      engine.setAudioLang(t.lang);
+                      setOpen(false);
+                    }}
+                  >
+                    <span className="lang-name">{label(t.lang)}</span>
+                    {t.kind === 'original' && <span className="lang-tag">Original</span>}
+                    {t.kind === 'descriptive' && <span className="lang-tag">Described</span>}
+                    {on && <Check size={15} />}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        </div>
+      )}
     </div>
   );
 }
@@ -117,6 +175,7 @@ export default function PlayerBar({
       </div>
 
       <div className="bar-right">
+        <LanguageMenu engine={engine} state={state} />
         <button
           className="icon-btn hide-sm"
           onClick={onShowShortcuts}

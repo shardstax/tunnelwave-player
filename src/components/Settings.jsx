@@ -3,6 +3,10 @@ import { Download, Monitor, Moon, RefreshCw, Sun, Upload, X } from 'lucide-react
 import { discoverInstances, testInstance } from '../lib/api';
 import { ShortcutList } from './ShortcutsPopover';
 import { MOD } from '../lib/shortcuts';
+import { languageName } from '../lib/format';
+
+// languages YouTube commonly dubs into
+const DUB_LANGUAGES = ['en', 'hi', 'es', 'pt', 'fr', 'de', 'it', 'ja', 'ko', 'zh', 'ar', 'ru', 'id', 'tr', 'pl', 'th', 'vi', 'bn', 'ta', 'te', 'ml', 'mr', 'pa'];
 
 export default function Settings({ settings, onUpdate, source, onExport, onImport, onClose }) {
   const [inst, setInst] = useState(settings.customInstance);
@@ -88,6 +92,21 @@ export default function Settings({ settings, onUpdate, source, onExport, onImpor
                 </button>
               ))}
             </div>
+          </div>
+          <div className="setting-row">
+            <span>
+              Audio language
+              <br />
+              <span className="muted small">For videos that come with dubbed audio</span>
+            </span>
+            <select value={settings.dubLanguage} onChange={(e) => onUpdate({ dubLanguage: e.target.value })} aria-label="Audio language">
+              <option value="">Original (default)</option>
+              {DUB_LANGUAGES.map((code) => (
+                <option key={code} value={code}>
+                  {languageName(code)} when available
+                </option>
+              ))}
+            </select>
           </div>
         </section>
 

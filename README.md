@@ -28,6 +28,7 @@
 - 🔁 **Automatic failover**: if one server is down, the next one is tried; if all fail, it falls back to the official YouTube player
 - 🔍 **Search** by song or video name, with a *Videos / Songs* filter
 - 🔗 **Paste any YouTube link**: videos, `youtu.be`, Shorts, YouTube Music, and whole **playlists**
+- 🌐 **Audio language picker**: on videos with dubbed audio, switch languages mid-song without losing your place. Plays the original by default, or set a preferred language in Settings
 
 **Queue (works like Spotify)**
 - ▶️ **Now playing** stays separate from **Next up**; finished songs leave the queue automatically
