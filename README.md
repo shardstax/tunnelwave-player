@@ -32,7 +32,7 @@
 - ⏮ **Previous** brings back the last song, and the current one returns to the top of the queue
 - ⏭ **Play next**, play now, remove, clear, and save the queue as a playlist
 - 🔀 **Shuffle** and 🔂 **repeat** (all / one)
-- ✨ **Up-next suggestions**: related songs, with optional auto-play when the queue runs out
+- ✨ **Smart autoplay radio**: when the queue ends, similar music keeps playing, built from YouTube's own radio mix of what you've been playing. It skips compilations and duplicate versions and learns from the songs you skip, finish and favourite
 
 **Library**
 - ❤️ **Favourites**

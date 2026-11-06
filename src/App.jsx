@@ -2,7 +2,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { arrayMove } from '@dnd-kit/sortable';
 import { Clock, Heart, ListMusic, Library, Search, Settings as SettingsIcon, Sparkles, X } from 'lucide-react';
 import { ActionsContext } from './actions';
-import { getPlaylist, getVideo, search as searchApi, setCustomInstance } from './lib/api';
+import { getPlaylist, getRadio, getVideo, search as searchApi, setCustomInstance } from './lib/api';
+import { EMPTY_TASTE, buildStation, nudgeTaste } from './lib/radio';
 import { extractAccent } from './lib/color';
 import { PlayerEngine } from './lib/engine';
 import { shuffled, uid } from './lib/format';
@@ -32,7 +33,10 @@ const RECENT_LIMIT = 50;
 const HISTORY_LIMIT = 100;
 const IDLE_SEARCH = { status: 'idle', query: '', filter: 'videos', tracks: [], playlist: null, error: null };
 
-const withUid = (track) => ({ ...toTrack(track), uid: uid() });
+// `fromRadio` marks songs autoplay picked, so skipping them can teach the radio
+const withUid = (track) => ({ ...toTrack(track), uid: uid(), ...(track.fromRadio && { fromRadio: true }) });
+const IDLE_STATION = { forId: null, status: 'idle', tracks: [] };
+const RADIO_SEED_WEIGHTS = [1, 0.45, 0.25];
 
 // fields where keys should type text instead of triggering shortcuts
 const NON_TEXT_INPUTS = ['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file'];
@@ -66,6 +70,7 @@ export default function App() {
   const [favourites, setFavourites] = useLocalStorage('tq.favourites', []);
   const [playlists, setPlaylists] = useLocalStorage('tq.playlists', []);
   const [recent, setRecent] = useLocalStorage('tq.recent', []);
+  const [taste, setTaste] = useLocalStorage('tq.taste', EMPTY_TASTE);
   const [rawSettings, setRawSettings] = useLocalStorage('tq.settings', {});
   const settings = useMemo(() => ({ ...DEFAULT_SETTINGS, ...rawSettings }), [rawSettings]);
   setCustomInstance(settings.customInstance);
@@ -175,13 +180,107 @@ export default function App() {
     toast(`Saved queue as “${name}”`);
   });
 
-  const pickSuggestion = () => {
-    const avoid = new Set([current?.id, ...queue.map((q) => q.id), ...recent.slice(0, 30).map((r) => r.id)]);
-    const options = engine.state.related.filter((r) => !avoid.has(r.id)).slice(0, 3);
-    return options[Math.floor(Math.random() * options.length)];
+  // ---------- autoplay radio ----------
+
+  // Rebuilt for every song: blends YouTube's radio for this song and the last two,
+  // then filters and re-ranks it with what we've learnt about the listener.
+  const [station, setStation] = useState(IDLE_STATION);
+  const stationRef = useRef({ forId: null, promise: null });
+  const currentRef = useRef(current);
+  currentRef.current = current;
+
+  const computeStation = useEvent(async (track) => {
+    const seedTracks = [track];
+    for (let i = history.length - 1; i >= 0 && seedTracks.length < RADIO_SEED_WEIGHTS.length; i--) {
+      if (!seedTracks.some((s) => s.id === history[i].id)) seedTracks.push(history[i]);
+    }
+    const results = await Promise.allSettled(seedTracks.map((t) => getRadio(t.id)));
+    const seeds = results.flatMap((r, i) =>
+      r.status === 'fulfilled' ? [{ track: seedTracks[i], tracks: r.value.tracks, weight: RADIO_SEED_WEIGHTS[i] }] : [],
+    );
+    // the stream server's related videos are a weaker extra signal
+    if (engine.track?.id === track.id && engine.state.related.length) {
+      seeds.push({ track, tracks: engine.state.related, weight: 0.3 });
+    }
+    return buildStation({
+      seeds,
+      avoid: [track, ...queue, ...history.slice(-30), ...recent.slice(0, 20)],
+      taste,
+      favouriteIds,
+      current: track,
+    });
+  });
+
+  useEffect(() => {
+    if (!current) {
+      setStation(IDLE_STATION);
+      stationRef.current = { forId: null, promise: null };
+      return;
+    }
+    let cancelled = false;
+    const id = current.id;
+    setStation((s) => (s.forId === id ? s : { forId: id, status: 'loading', tracks: [] }));
+    const promise = computeStation(current).catch(() => []);
+    stationRef.current = { forId: id, promise };
+    promise.then((tracks) => !cancelled && setStation({ forId: id, status: 'done', tracks }));
+    return () => {
+      cancelled = true;
+    };
+    // related videos arrive a moment after the song starts; mixes are cached, so rebuilding is cheap
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.id, engineState.related]);
+
+  // what autoplay will actually play, minus anything you've queued since
+  const radioTracks = useMemo(() => {
+    if (!current || station.forId !== current.id) return [];
+    const taken = new Set([current.id, ...queue.map((q) => q.id)]);
+    return station.tracks.filter((t) => !taken.has(t.id));
+  }, [station, queue, current]);
+
+  const pickRadioTrack = async () => {
+    const forId = current?.id;
+    let list = station.forId === forId && station.status === 'done' ? station.tracks : null;
+    if (!list && stationRef.current.forId === forId) list = await stationRef.current.promise;
+    const taken = new Set([forId, ...queue.map((q) => q.id)]);
+    const pick = (list || []).find((t) => !taken.has(t.id));
+    if (pick) return pick;
+    // nothing ranked (e.g. radio servers down): fall back to the stream server's related videos
+    return engine.state.related.find((r) => !taken.has(r.id) && !recent.slice(0, 30).some((x) => x.id === r.id));
   };
 
-  const next = useEvent((auto = false) => {
+  // ---------- learning from what you skip and finish ----------
+
+  const progressRef = useRef({ uid: null, time: 0, duration: 0 });
+  const moveRef = useRef('skip'); // how the last song ended: skip | auto | prev
+  const previousRef = useRef(current);
+
+  useEffect(() => {
+    const onTime = () => {
+      if (engine.track) progressRef.current = { uid: engine.track.uid, time: engine.currentTime, duration: engine.duration };
+    };
+    engine.addEventListener('time', onTime);
+    return () => engine.removeEventListener('time', onTime);
+  }, [engine]);
+
+  useEffect(() => {
+    const left = previousRef.current;
+    previousRef.current = current;
+    const move = moveRef.current;
+    moveRef.current = 'skip';
+    if (!left || left.uid === current?.uid || move === 'prev') return;
+    const p = progressRef.current.uid === left.uid ? progressRef.current : { time: 0, duration: 0 };
+    const listened = p.duration > 0 ? p.time / p.duration : 0;
+    if (move === 'auto' || listened >= 0.8) {
+      setTaste((t) => nudgeTaste(t, left, left.fromRadio ? 0.4 : 0.2));
+    } else if (left.fromRadio && p.time < 30) {
+      setTaste((t) => nudgeTaste(t, left, -1, { skipped: true }));
+    } else if (left.fromRadio && listened < 0.5) {
+      setTaste((t) => nudgeTaste(t, left, -0.3));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current?.uid]);
+
+  const next = useEvent(async (auto = false) => {
     if (auto && settings.repeat === 'one') {
       engine.seek(0);
       engine.play();
@@ -190,17 +289,25 @@ export default function App() {
     // repeat all: the finished song goes to the back of the line
     const upcoming = settings.repeat === 'all' && current ? [...queue, withUid(current)] : queue;
     if (upcoming.length) {
+      if (auto) moveRef.current = 'auto';
       setQueue(upcoming.slice(1));
       startTrack(upcoming[0]);
       return;
     }
-    const suggestion = settings.autoRadio && pickSuggestion();
-    if (suggestion) {
-      startTrack(suggestion);
-      if (!auto) toast(`Playing a suggestion: “${suggestion.title}”`);
+    if (!settings.autoRadio || !current) {
+      if (!auto) toast('You’ve reached the end of the queue');
       return;
     }
-    if (!auto) toast('You’ve reached the end of the queue');
+    const startedFrom = current.uid;
+    const pick = await pickRadioTrack();
+    // the user picked something else while we were waiting
+    if (currentRef.current?.uid !== startedFrom) return;
+    if (!pick) {
+      if (!auto) toast('You’ve reached the end of the queue');
+      return;
+    }
+    if (auto) moveRef.current = 'auto';
+    startTrack({ ...pick, fromRadio: true });
   });
 
   /** Brings back the last played song; the current one returns to the top of the queue. */
@@ -209,6 +316,7 @@ export default function App() {
       engine.seek(0);
       return;
     }
+    moveRef.current = 'prev';
     const last = history[history.length - 1];
     setHistory(history.slice(0, -1));
     if (current) setQueue([withUid(current), ...queue]);
@@ -237,9 +345,11 @@ export default function App() {
   const toggleFavourite = useEvent((track) => {
     if (favouriteIds.has(track.id)) {
       setFavourites(favourites.filter((f) => f.id !== track.id));
+      setTaste((t) => nudgeTaste(t, track, -0.5));
       toast('Removed from favourites');
     } else {
       setFavourites([toTrack(track), ...favourites]);
+      setTaste((t) => nudgeTaste(t, track, 1));
       toast('Added to favourites');
     }
   });
@@ -358,6 +468,14 @@ export default function App() {
       engine.removeEventListener('ended', onEnded);
     };
   }, [engine, onEngineState, onEnded]);
+
+  // warm up the next song's stream so skipping or auto-advancing starts fast
+  const upNextId = queue[0]?.id ?? (settings.autoRadio ? radioTracks[0]?.id : undefined);
+  useEffect(() => {
+    if (engineState.status !== 'playing' || !upNextId) return;
+    const timer = setTimeout(() => getVideo(upNextId).catch(() => {}), 8000);
+    return () => clearTimeout(timer);
+  }, [engineState.status === 'playing', upNextId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (engineState.status === 'error' && engineState.error) toast(engineState.error);
@@ -556,15 +674,10 @@ export default function App() {
 
   // ---------- render ----------
 
-  const related = useMemo(() => {
-    const taken = new Set([current?.id, ...queue.map((q) => q.id)]);
-    return engineState.related.filter((r) => !taken.has(r.id));
-  }, [engineState.related, queue, current?.id]);
-
   const tabs = [
     !isWide && { key: 'queue', label: 'Queue', icon: ListMusic, count: queue.length },
     { key: 'results', label: 'Search', icon: Search },
-    { key: 'suggested', label: 'Suggested', icon: Sparkles, count: related.length },
+    { key: 'suggested', label: 'Radio', icon: Sparkles, count: radioTracks.length },
     { key: 'favourites', label: 'Favourites', icon: Heart, count: favourites.length },
     { key: 'playlists', label: 'Playlists', icon: Library, count: playlists.length },
     { key: 'recent', label: 'Recent', icon: Clock },
@@ -582,6 +695,8 @@ export default function App() {
       onRemoveCurrent={removeCurrent}
       onClear={clearQueue}
       onSaveAsPlaylist={saveQueueAsPlaylist}
+      autoplay={settings.autoRadio ? radioTracks.slice(0, 5) : []}
+      onPlayAutoplay={playNow}
     />
   );
 
@@ -661,7 +776,9 @@ export default function App() {
                 )}
                 {activeTab === 'suggested' && (
                   <Suggestions
-                    tracks={related}
+                    tracks={radioTracks}
+                    loading={!!current && station.status === 'loading'}
+                    basedOn={current}
                     hasTrack={!!current}
                     autoRadio={settings.autoRadio}
                     onToggleAutoRadio={() => updateSettings({ autoRadio: !settings.autoRadio })}

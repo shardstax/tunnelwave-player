@@ -53,12 +53,14 @@ async function getJSON(url) {
   }
 }
 
-function candidates(exclude) {
+function candidates(exclude, prefer) {
   const lastGood = readJSON(LAST_GOOD_KEY, null);
   const discovered = readJSON(DISCOVERED_KEY, { list: [] }).list;
   const all = [...DEFAULT_INSTANCES, ...discovered];
   // last instance that worked goes first; a custom instance always goes before that
   all.sort((a, b) => (b.base === lastGood) - (a.base === lastGood));
+  // some calls only work (well) on one kind of server
+  if (prefer) all.sort((a, b) => (b.type === prefer) - (a.type === prefer));
   if (customInstance) all.unshift(customInstance);
 
   const seen = new Set();
@@ -93,20 +95,21 @@ export async function discoverInstances() {
 /**
  * Runs `op[type](base)` against instances until one succeeds.
  * Tries the preferred instance alone first, then the rest in parallel batches.
+ * `remember: false` keeps side requests (like radio) from changing which server playback tries first.
  */
-async function request(op, exclude = new Set()) {
+async function request(op, exclude = new Set(), { prefer, remember = true } = {}) {
   const tried = new Set(exclude);
   let lastError;
 
   const attempt = async (inst) => {
     tried.add(inst.base);
     const result = await op[inst.type](inst.base);
-    writeJSON(LAST_GOOD_KEY, inst.base);
+    if (remember) writeJSON(LAST_GOOD_KEY, inst.base);
     return { ...result, source: inst };
   };
 
   for (let pass = 0; pass < 2; pass++) {
-    const list = candidates(tried);
+    const list = candidates(tried, prefer);
     if (list.length) {
       try {
         return await attempt(list[0]);
@@ -255,6 +258,42 @@ export async function getPlaylist(listId) {
       return { title: d.title || 'YouTube playlist', tracks };
     },
   });
+}
+
+const radioCache = new Map();
+const RADIO_CACHE_MS = 60 * 60 * 1000;
+
+/**
+ * Songs YouTube itself would play after `id`: its "Mix" radio (the YouTube Music radio algorithm),
+ * or plain related videos when no server can build a mix. Resolves to { tracks, kind: 'mix' | 'related' }.
+ */
+export function getRadio(id) {
+  const cached = radioCache.get(id);
+  if (cached && Date.now() - cached.at < RADIO_CACHE_MS) return cached.promise;
+  const promise = request(
+    {
+      piped: async (base) => {
+        const d = await getJSON(`${base}/playlists/RD${encodeURIComponent(id)}`);
+        const tracks = (d.relatedStreams || []).map(fromPiped).filter(Boolean);
+        if (tracks.length < 5) throw new Error('No mix for this song');
+        return { tracks, kind: 'mix' };
+      },
+      invidious: async (base) => {
+        // Invidious mixes are broken or disabled on most servers, so use related videos instead
+        const known = videoCache.get(id)?.data?.related;
+        const tracks = known?.length
+          ? known
+          : ((await getJSON(`${base}/api/v1/videos/${id}?fields=recommendedVideos`)).recommendedVideos || []).map(fromInvidious);
+        if (!tracks.length) throw new Error('No related videos');
+        return { tracks, kind: 'related' };
+      },
+    },
+    new Set(),
+    { prefer: 'piped', remember: false },
+  );
+  radioCache.set(id, { at: Date.now(), promise });
+  promise.catch(() => radioCache.delete(id));
+  return promise;
 }
 
 /** Quick health check used by the Settings screen. */

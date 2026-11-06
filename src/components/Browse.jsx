@@ -134,22 +134,37 @@ export function Results({ search, onFilter, onRetry, onOpenSettings }) {
   );
 }
 
-export function Suggestions({ tracks, autoRadio, onToggleAutoRadio, hasTrack }) {
+export function Suggestions({ tracks, loading, basedOn, autoRadio, onToggleAutoRadio, hasTrack }) {
   return (
     <>
       <div className="list-head">
-        <p className="muted small">Based on what’s playing now</p>
+        <p className="muted small radio-basis">
+          {basedOn ? (
+            <>
+              Your radio, based on <strong>{basedOn.title}</strong> and what you played before it
+            </>
+          ) : (
+            'Your radio follows what you play'
+          )}
+        </p>
         <label className="switch">
           <input type="checkbox" checked={autoRadio} onChange={onToggleAutoRadio} />
           <span className="switch-track" />
-          Auto-add when the queue ends
+          Autoplay when the queue ends
         </label>
       </div>
-      {tracks.length ? (
-        <TrackList tracks={tracks} />
+      {loading && !tracks.length ? (
+        <Skeleton />
+      ) : tracks.length ? (
+        <>
+          <BulkBar tracks={tracks} />
+          <TrackList tracks={tracks} />
+        </>
       ) : (
-        <Empty icon={Sparkles} title={hasTrack ? 'No suggestions for this song' : 'Play something first'}>
-          Suggestions appear here once a song is playing from an ad-free source.
+        <Empty icon={Sparkles} title={hasTrack ? 'No radio for this song yet' : 'Play something first'}>
+          {hasTrack
+            ? 'The radio servers didn’t answer. Try another song, or skip ahead and it will try again.'
+            : 'Play any song and a radio of similar music appears here. Skip what you don’t like and it learns.'}
         </Empty>
       )}
     </>

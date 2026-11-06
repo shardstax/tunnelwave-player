@@ -464,7 +464,8 @@ select:focus {
   flex-direction: column;
 }
 
-.side-col .qlist {
+.side-col .queue-scroll {
+  min-height: 0;
   overflow-y: auto;
   margin-right: -8px;
   padding-right: 4px;
@@ -1060,6 +1061,47 @@ select:focus {
 }
 
 /* ---------- queue ---------- */
+
+.autoplay {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+}
+
+.autoplay-head {
+  margin-bottom: 8px;
+}
+
+.autoplay-head h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 15px;
+}
+
+.autoplay-head h3 svg {
+  color: var(--accent);
+}
+
+/* autoplay picks are a suggestion, not a commitment: quieter until hovered */
+.qitem.is-autoplay .qitem-main {
+  opacity: 0.72;
+  transition: opacity 0.15s;
+}
+
+.qitem.is-autoplay:hover .qitem-main,
+.qitem.is-autoplay:focus-within .qitem-main {
+  opacity: 1;
+}
+
+.queue-empty-note {
+  padding: 4px 4px 0;
+}
+
+.radio-basis strong {
+  color: var(--text);
+}
 
 .qitem {
   position: relative;

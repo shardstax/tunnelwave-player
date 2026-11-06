@@ -3,7 +3,8 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronUp, GripVertical, ListMusic, Save, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, GripVertical, ListMusic, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
+import { useActions } from '../actions';
 import { formatTime, formatTotal } from '../lib/format';
 
 function Equalizer({ paused }) {
@@ -53,7 +54,43 @@ const QueueItem = memo(function QueueItem({ item, index, count, onPlay, onMove, 
   );
 });
 
-function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCurrent, onClear, onSaveAsPlaylist }) {
+/** Spotify-style preview of what autoplay will pick once the queue runs out. */
+function Autoplay({ tracks, onPlay }) {
+  const { addToQueue } = useActions();
+  return (
+    <div className="autoplay">
+      <div className="autoplay-head">
+        <h3>
+          <Sparkles size={15} /> Autoplay
+        </h3>
+        <p className="muted small">Similar music keeps playing after your queue</p>
+      </div>
+      <ul className="qlist">
+        {tracks.map((t) => (
+          <li key={t.id} className="qitem is-autoplay">
+            <button className="qitem-main" onClick={() => onPlay(t)} title="Play now">
+              <img src={t.thumbnail} alt="" loading="lazy" />
+              <span className="track-text">
+                <span className="track-title">{t.title}</span>
+                <span className="track-author">
+                  {t.author}
+                  {t.duration > 0 && ` · ${formatTime(t.duration)}`}
+                </span>
+              </span>
+            </button>
+            <div className="qitem-actions">
+              <button className="icon-btn" onClick={() => addToQueue([t])} title="Add to queue">
+                <Plus size={16} />
+              </button>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCurrent, onClear, onSaveAsPlaylist, autoplay = [], onPlayAutoplay }) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const sensors = useSensors(
@@ -130,23 +167,28 @@ function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCu
         </form>
       )}
 
-      {queue.length === 0 ? (
-        <div className="empty">
-          <ListMusic size={32} />
-          <p>Nothing queued</p>
-          <p className="muted small">Search for a song or paste a YouTube link, then hit “Queue”.</p>
-        </div>
-      ) : (
-        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} modifiers={[restrictToVerticalAxis, restrictToParentElement]}>
-          <SortableContext items={queue.map((q) => q.uid)} strategy={verticalListSortingStrategy}>
-            <ol className="qlist">
-              {queue.map((item, i) => (
-                <QueueItem key={item.uid} item={item} index={i} count={queue.length} onPlay={onPlay} onMove={onMove} onRemove={onRemove} />
-              ))}
-            </ol>
-          </SortableContext>
-        </DndContext>
-      )}
+      <div className="queue-scroll">
+        {queue.length === 0 && autoplay.length > 0 ? (
+          <p className="muted small queue-empty-note">Your queue is empty. Add songs, or let autoplay pick.</p>
+        ) : queue.length === 0 ? (
+          <div className="empty">
+            <ListMusic size={32} />
+            <p>Nothing queued</p>
+            <p className="muted small">Search for a song or paste a YouTube link, then hit “Queue”.</p>
+          </div>
+        ) : (
+          <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd} modifiers={[restrictToVerticalAxis, restrictToParentElement]}>
+            <SortableContext items={queue.map((q) => q.uid)} strategy={verticalListSortingStrategy}>
+              <ol className="qlist">
+                {queue.map((item, i) => (
+                  <QueueItem key={item.uid} item={item} index={i} count={queue.length} onPlay={onPlay} onMove={onMove} onRemove={onRemove} />
+                ))}
+              </ol>
+            </SortableContext>
+          </DndContext>
+        )}
+        {autoplay.length > 0 && <Autoplay tracks={autoplay} onPlay={onPlayAutoplay} />}
+      </div>
     </section>
   );
 }
