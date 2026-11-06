@@ -165,6 +165,7 @@ export async function search(query, filter = 'videos') {
 }
 
 const videoCache = new Map();
+const inflight = new Map();
 const CACHE_MS = 30 * 60 * 1000;
 
 /**
@@ -175,7 +176,17 @@ export async function getVideo(id, { exclude } = {}) {
   const retrying = exclude?.size > 0;
   const cached = videoCache.get(id);
   if (!retrying && cached && Date.now() - cached.at < CACHE_MS) return cached.data;
+  // share one request when the same video is asked for twice at once
+  if (!retrying && inflight.has(id)) return inflight.get(id);
+  const pending = fetchVideo(id, exclude);
+  if (!retrying) {
+    inflight.set(id, pending);
+    pending.finally(() => inflight.delete(id)).catch(() => {});
+  }
+  return pending;
+}
 
+async function fetchVideo(id, exclude) {
   const data = await request(
     {
       piped: async (base) => {

@@ -53,7 +53,7 @@ const QueueItem = memo(function QueueItem({ item, index, count, onPlay, onMove, 
   );
 });
 
-function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onClear, onSaveAsPlaylist }) {
+function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCurrent, onClear, onSaveAsPlaylist }) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const sensors = useSensors(
@@ -92,6 +92,9 @@ function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onClear, o
               <span className="track-title">{current.title}</span>
               <span className="track-author">{current.author}</span>
             </span>
+            <button className="icon-btn" onClick={onRemoveCurrent} title="Remove and play next">
+              <X size={16} />
+            </button>
           </div>
         </div>
       )}

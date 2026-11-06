@@ -51,8 +51,20 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite })
         {showArtwork && (
           <div className="artwork" onClick={() => engine.toggle()} title="Play / pause">
             <img className="artwork-bg" src={thumbnail(track.id, 'hqdefault')} alt="" />
-            <div className={`artwork-disc ${state.status === 'playing' ? 'is-spinning' : ''}`}>
-              <img src={thumbnail(track.id, 'hqdefault')} alt="" />
+            {/* full 16:9 cover (YouTube thumbnails are wide, a circle would crop them) with a record peeking out */}
+            <div className="artwork-stack">
+              <span className={`vinyl ${state.status === 'playing' ? 'is-spinning' : ''}`} />
+              <img
+                key={track.id}
+                className="artwork-cover"
+                src={thumbnail(track.id, 'maxresdefault')}
+                alt=""
+                onLoad={(e) => {
+                  // YouTube serves a 120×90 placeholder when there's no HD thumbnail
+                  if (e.currentTarget.naturalWidth <= 120) e.currentTarget.src = thumbnail(track.id, 'hqdefault');
+                }}
+                onError={(e) => (e.currentTarget.src = thumbnail(track.id, 'hqdefault'))}
+              />
             </div>
           </div>
         )}

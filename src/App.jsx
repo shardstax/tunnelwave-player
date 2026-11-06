@@ -34,6 +34,14 @@ const IDLE_SEARCH = { status: 'idle', query: '', filter: 'videos', tracks: [], p
 
 const withUid = (track) => ({ ...toTrack(track), uid: uid() });
 
+// fields where keys should type text instead of triggering shortcuts
+const NON_TEXT_INPUTS = ['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file'];
+const isTextField = (el) =>
+  el.isContentEditable ||
+  el.tagName === 'TEXTAREA' ||
+  el.tagName === 'SELECT' ||
+  (el.tagName === 'INPUT' && !NON_TEXT_INPUTS.includes(el.type));
+
 function Logo() {
   return (
     <svg viewBox="0 0 64 64" width="30" height="30" aria-hidden="true">
@@ -141,6 +149,21 @@ export default function App() {
   });
 
   const removeFromQueue = useEvent((id) => setQueue(queue.filter((q) => q.uid !== id)));
+
+  /**
+   * Removes the current song and plays the next one in the queue (stops if the queue is empty).
+   * The removed song goes to history, so "previous" can still bring it back.
+   */
+  const removeCurrent = useEvent(() => {
+    if (!current) return;
+    if (queue.length) {
+      setQueue(queue.slice(1));
+      startTrack(queue[0]);
+      return;
+    }
+    setHistory((h) => [...h, toTrack(current)].slice(-HISTORY_LIMIT));
+    setCurrent(null);
+  });
 
   const clearQueue = useEvent(() => {
     setQueue([]);
@@ -308,9 +331,11 @@ export default function App() {
 
   const autoplayRef = useRef(false);
   useEffect(() => {
-    if (current) engine.load(current, { autoplay: autoplayRef.current });
+    // after a page refresh, wait for the user's first click/key before playing
+    // (browsers block autoplay until then anyway)
+    const autoplay = navigator.userActivation ? navigator.userActivation.hasBeenActive : autoplayRef.current;
+    if (current) engine.load(current, { autoplay });
     else engine.stop();
-    // first load after a page refresh waits for a click (browsers block autoplay anyway)
     autoplayRef.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.uid]);
@@ -398,24 +423,28 @@ export default function App() {
 
   // ---------- keyboard shortcuts ----------
 
+  // Shortcuts are captured before any focused button, slider or drag handle sees the key,
+  // so e.g. Space always plays/pauses instead of clicking whatever was clicked last.
   const onKey = useEvent((e) => {
-    if (settingsOpen) return;
     const t = e.target;
-    const typing = t.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(t.tagName);
+    const claim = () => {
+      e.preventDefault();
+      e.stopPropagation();
+    };
 
     // Alt + / works everywhere, even while typing
     if (e.altKey && e.code === 'Slash') {
-      e.preventDefault();
+      claim();
       setShortcutsOpen((o) => !o);
       return;
     }
     // little extra, intentionally not listed
     if (e.altKey && e.code === 'KeyM') {
-      e.preventDefault();
+      claim();
       setQuote(nextQuote());
       return;
     }
-    if (typing) {
+    if (isTextField(t)) {
       if (e.key === 'Escape') t.blur();
       return;
     }
@@ -441,16 +470,28 @@ export default function App() {
     };
     const action = mod ? modActions[key] : plainActions[key];
     if (!action) return;
-    // let Space/Enter activate a focused button as usual
-    if (key === ' ' && t.tagName === 'BUTTON') return;
-    e.preventDefault();
+    claim();
+    // holding Space shouldn't flicker play/pause
+    if (key === ' ' && e.repeat) return;
     action();
   });
 
+  // browsers "click" a focused button when Space is released, so swallow that too
+  const onKeyUp = useEvent((e) => {
+    if (e.key === ' ' && !e.ctrlKey && !e.metaKey && !e.altKey && !isTextField(e.target)) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+  });
+
   useEffect(() => {
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [onKey]);
+    window.addEventListener('keydown', onKey, true);
+    window.addEventListener('keyup', onKeyUp, true);
+    return () => {
+      window.removeEventListener('keydown', onKey, true);
+      window.removeEventListener('keyup', onKeyUp, true);
+    };
+  }, [onKey, onKeyUp]);
 
   // ---------- theme & colours ----------
 
@@ -538,6 +579,7 @@ export default function App() {
       onPlay={playFromQueue}
       onMove={moveInQueue}
       onRemove={removeFromQueue}
+      onRemoveCurrent={removeCurrent}
       onClear={clearQueue}
       onSaveAsPlaylist={saveQueueAsPlaylist}
     />

@@ -12,7 +12,8 @@
   --accent: hsl(var(--accent-h) var(--accent-s) 64%);
   --accent-strong: hsl(var(--accent-h) var(--accent-s) 56%);
   --accent-soft: hsl(var(--accent-h) var(--accent-s) 64% / 0.16);
-  --on-accent: #fff;
+  /* dark text on the (light) accent stays readable whatever colour the song gives us */
+  --on-accent: hsl(var(--accent-h) 45% 9%);
 
   --bg: hsl(var(--accent-h) 22% 6%);
   --bg-glow: hsl(var(--accent-h) 60% 30% / 0.35);
@@ -37,9 +38,10 @@
 }
 
 :root[data-theme='light'] {
-  --accent: hsl(var(--accent-h) var(--accent-s) 50%);
-  --accent-strong: hsl(var(--accent-h) var(--accent-s) 44%);
-  --accent-soft: hsl(var(--accent-h) var(--accent-s) 50% / 0.12);
+  --on-accent: #fff;
+  --accent: hsl(var(--accent-h) var(--accent-s) 40%);
+  --accent-strong: hsl(var(--accent-h) var(--accent-s) 34%);
+  --accent-soft: hsl(var(--accent-h) var(--accent-s) 45% / 0.12);
   --bg: hsl(var(--accent-h) 30% 97%);
   --bg-glow: hsl(var(--accent-h) 80% 80% / 0.45);
   --surface: hsl(0 0% 100% / 0.75);
@@ -411,6 +413,7 @@ select:focus {
 
 .searchbox {
   flex: 1;
+  min-width: 0;
   max-width: 640px;
   margin: 0 auto;
   display: flex;
@@ -553,34 +556,50 @@ select:focus {
   filter: blur(40px) saturate(1.4) brightness(0.55);
 }
 
-.artwork-disc {
+.artwork-stack {
   position: relative;
-  width: min(52%, 300px);
-  aspect-ratio: 1;
-  border-radius: 50%;
-  overflow: hidden;
-  box-shadow: 0 20px 60px rgb(0 0 0 / 0.6), 0 0 0 6px rgb(255 255 255 / 0.08);
-  animation: spin 18s linear infinite paused;
+  width: min(60%, 560px);
+  aspect-ratio: 16 / 9;
+  transform: translateX(-7%);
 }
 
-.artwork-disc.is-spinning {
-  animation-play-state: running;
-}
-
-.artwork-disc img {
+.artwork-cover {
+  position: relative;
+  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transform: scale(1.35);
+  border-radius: 16px;
+  box-shadow: 0 24px 60px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.08);
 }
 
-.artwork-disc::after {
+.vinyl {
+  position: absolute;
+  top: 5%;
+  right: -22%;
+  height: 90%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--accent) 0 15%, #111 15.5% 17%, transparent 17.5%),
+    repeating-radial-gradient(circle, #181818 0 2px, #222 2px 4px);
+  box-shadow: 0 16px 40px rgb(0 0 0 / 0.5);
+  animation: spin 4s linear infinite paused;
+  transition: right 0.5s ease;
+}
+
+.vinyl::after {
+  /* light sheen so the rotation is visible */
   content: '';
   position: absolute;
-  inset: 44%;
+  inset: 0;
   border-radius: 50%;
-  background: var(--bg);
-  box-shadow: 0 0 0 4px rgb(255 255 255 / 0.15);
+  background: conic-gradient(from 30deg, transparent 0 20%, rgb(255 255 255 / 0.1) 25%, transparent 30% 70%, rgb(255 255 255 / 0.08) 75%, transparent 80%);
+}
+
+.vinyl.is-spinning {
+  animation-play-state: running;
+  right: -30%;
 }
 
 .artwork-note {
@@ -1097,8 +1116,8 @@ select:focus {
 }
 
 .qitem-main img {
-  width: 44px;
-  height: 44px;
+  width: 64px;
+  height: 36px;
   flex: none;
   border-radius: 8px;
   object-fit: cover;
@@ -1174,8 +1193,8 @@ select:focus {
 }
 
 .now-card img {
-  width: 44px;
-  height: 44px;
+  width: 64px;
+  height: 36px;
   flex: none;
   border-radius: 8px;
   object-fit: cover;
@@ -1257,8 +1276,8 @@ select:focus {
 }
 
 .bar-track img {
-  width: 54px;
-  height: 54px;
+  width: 86px;
+  height: 48px;
   flex: none;
   border-radius: 10px;
   object-fit: cover;
@@ -1297,7 +1316,7 @@ select:focus {
 .play-btn:hover:not(:disabled) {
   transform: scale(1.06);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .progress {
@@ -1332,6 +1351,8 @@ select:focus {
 .range {
   --p: 0%;
   flex: 1;
+  min-width: 0;
+  width: 100%;
   height: 16px;
   margin: 0;
   background: transparent;
@@ -1646,7 +1667,20 @@ kbd {
   }
 
   .thumb-md {
-    width: 88px;
+    width: 72px;
+  }
+
+  .qitem-index {
+    display: none;
+  }
+
+  .qitem-main {
+    gap: 8px;
+  }
+
+  .qitem-main img {
+    width: 56px;
+    height: 32px;
   }
 
   .track {
@@ -1676,8 +1710,8 @@ kbd {
   }
 
   .bar-track img {
-    width: 44px;
-    height: 44px;
+    width: 64px;
+    height: 36px;
   }
 
   .bar-right {

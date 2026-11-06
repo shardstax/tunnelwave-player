@@ -64,6 +64,8 @@ export class PlayerEngine extends EventTarget {
     v.preload = 'auto';
     v.addEventListener('playing', () => {
       this.switching = false;
+      // paused by the user while the stream was still starting
+      if (!this.wantPlay) return v.pause();
       this.set({ status: 'playing' });
     });
     v.addEventListener('pause', () => {
@@ -106,6 +108,7 @@ export class PlayerEngine extends EventTarget {
     this.audioOnly = audioOnly;
     this.excluded = new Set();
     this.attempts = 0;
+    this.wantPlay = autoplay;
     this.destroyEmbed();
     this.switching = true;
     this.video.pause();
@@ -122,6 +125,8 @@ export class PlayerEngine extends EventTarget {
       return;
     }
     if (token !== this.token) return;
+    // the user may have pressed play/pause while we were fetching
+    autoplay = this.wantPlay;
 
     const v = this.video;
     const videoStream = this.audioOnly ? null : pickVideo(info.video, v);
@@ -156,6 +161,7 @@ export class PlayerEngine extends EventTarget {
       if (token !== this.token || err.name !== 'NotAllowedError') return;
       // browser blocked autoplay (e.g. right after a page reload) — wait for a click
       this.switching = false;
+      this.wantPlay = false;
       this.set({ status: 'paused' });
     });
   }
@@ -189,6 +195,7 @@ export class PlayerEngine extends EventTarget {
       return;
     }
     if (token !== this.token) return;
+    autoplay = this.wantPlay;
 
     const mount = document.createElement('div');
     this.embedEl.replaceChildren(mount);
@@ -204,7 +211,7 @@ export class PlayerEngine extends EventTarget {
           if (token !== this.token) return;
           e.target.setVolume(Math.round(this.volume * 100));
           if (this.muted) e.target.mute();
-          if (autoplay) e.target.playVideo();
+          if (this.wantPlay) e.target.playVideo();
           else this.set({ status: 'paused' });
         },
         onStateChange: (e) => {
@@ -257,17 +264,33 @@ export class PlayerEngine extends EventTarget {
   // ---------- controls ----------
 
   play() {
+    this.wantPlay = true;
     if (this.state.mode === 'embed') this.yt?.playVideo?.();
     else if (this.video.getAttribute('src')) this.video.play().catch(() => {});
   }
 
   pause() {
+    this.wantPlay = false;
     if (this.state.mode === 'embed') this.yt?.pauseVideo?.();
     else this.video.pause();
   }
 
   toggle() {
-    if (this.state.status === 'playing') this.pause();
+    // mid track-switch the element still holds the old song: just remember the choice
+    if (this.switching) {
+      this.wantPlay = !this.wantPlay;
+      this.set({ status: this.wantPlay ? 'loading' : 'paused' });
+      return;
+    }
+    // check the real player, not just our status: while buffering it is still "playing"
+    let running;
+    if (this.state.mode === 'embed') {
+      const s = this.yt?.getPlayerState?.();
+      running = s === 1 || s === 3; // YT.PlayerState.PLAYING / BUFFERING
+    } else {
+      running = !this.video.paused;
+    }
+    if (running) this.pause();
     else this.play();
   }
 
