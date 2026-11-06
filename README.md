@@ -29,6 +29,7 @@
 - 🔍 **Search** by song or video name, with a *Videos / Songs* filter
 - 🔗 **Paste any YouTube link**: videos, `youtu.be`, Shorts, YouTube Music, and whole **playlists**
 - 🌐 **Audio language picker**: on videos with dubbed audio, switch languages mid-song without losing your place. Plays the original by default, or set a preferred language in Settings
+- 🎤 **Synced lyrics**: Spotify-style lyrics that follow the song (tap a line to jump there), from the free [LRCLIB](https://lrclib.net) database. Pick different lyrics or nudge the timing if a version does not line up
 
 **Queue (works like Spotify)**
 - ▶️ **Now playing** stays separate from **Next up**; finished songs leave the queue automatically
@@ -64,6 +65,7 @@
 | `S` | Shuffle |
 | `R` | Repeat mode |
 | `M` | Mute |
+| `L` | Show / hide lyrics |
 | `Alt` + `/` | Show all shortcuts |
 
 On macOS, use `⌘` instead of `Ctrl`.

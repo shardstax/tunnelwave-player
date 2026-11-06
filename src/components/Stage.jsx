@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, ChevronsRight, Heart, Loader2, Maximize, Music2, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsRight, Heart, Loader2, Maximize, MicVocal, Music2, ShieldCheck, TriangleAlert } from 'lucide-react';
 import { useEngineState, useEngineTime } from '../lib/hooks';
 import { getSkipSegments, skipLabel } from '../lib/skips';
 import { thumbnail } from '../lib/youtube';
@@ -58,7 +58,7 @@ function SkipButton({ engine, track, onNext }) {
  * The "now playing" card at the top of the page. Kept short on purpose so search results stay
  * in view; it can also collapse to a slim strip (remembered in settings).
  */
-export default function Stage({ engine, track, isFavourite, onToggleFavourite, onNext, compact, onToggleCompact }) {
+export default function Stage({ engine, track, isFavourite, onToggleFavourite, onNext, compact, onToggleCompact, lyricsOpen, onToggleLyrics }) {
   const state = useEngineState(engine);
   const hostRef = useRef(null);
   const stageRef = useRef(null);
@@ -132,6 +132,14 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite, o
             <SkipButton engine={engine} track={track} onNext={onNext} />
             <button className={`icon-btn ${isFavourite ? 'is-fav' : ''}`} onClick={onToggleFavourite} title="Favourite (F)">
               <Heart size={19} fill={isFavourite ? 'currentColor' : 'none'} />
+            </button>
+            <button
+              className={`icon-btn ${lyricsOpen ? 'is-on' : ''}`}
+              onClick={onToggleLyrics}
+              title={lyricsOpen ? 'Hide lyrics (L)' : 'Lyrics (L)'}
+              aria-pressed={lyricsOpen}
+            >
+              <MicVocal size={18} />
             </button>
             {showMedia && (
               <button className="icon-btn" onClick={fullscreen} title="Fullscreen video">

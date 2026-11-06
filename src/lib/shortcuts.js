@@ -14,5 +14,6 @@ export const getShortcuts = ({ seekStep = 5, volumeStep = 5 } = {}) => [
   ['S', 'Shuffle'],
   ['R', 'Repeat mode'],
   ['M', 'Mute'],
+  ['L', 'Lyrics'],
   [`${ALT} + /`, 'Show shortcuts'],
 ];

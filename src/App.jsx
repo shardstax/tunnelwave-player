@@ -11,6 +11,7 @@ import { useEngineState, useEvent, useLocalStorage, useMediaQuery } from './lib/
 import { parseYouTubeUrl, thumbnail, toTrack } from './lib/youtube';
 import { ARCH, ARCH_PATH, WAVE, WAVE_PATH } from './lib/logo';
 import Stage from './components/Stage';
+import Lyrics from './components/Lyrics';
 import Queue from './components/Queue';
 import PlayerBar from './components/PlayerBar';
 import Settings from './components/Settings';
@@ -81,6 +82,7 @@ export default function App() {
   setCustomInstance(settings.customInstance);
 
   const [tab, setTab] = useState('results');
+  const [lyricsOpen, setLyricsOpen] = useState(false);
   const [input, setInput] = useState('');
   const [search, setSearch] = useState(IDLE_SEARCH);
   const [toasts, setToasts] = useState([]);
@@ -444,6 +446,7 @@ export default function App() {
     }
 
     setTab('results');
+    setLyricsOpen(false); // searching brings the results back
     if (link?.playlistId) {
       if (!link.videoId) setInput('');
       setSearch({ ...IDLE_SEARCH, status: 'loading', query, filter });
@@ -629,6 +632,7 @@ export default function App() {
       s: () => toggleShuffle(),
       r: () => updateSettings({ repeat: { off: 'all', all: 'one', one: 'off' }[settings.repeat] }),
       m: () => updateSettings({ muted: !settings.muted }),
+      l: () => current && setLyricsOpen((o) => !o),
     };
     const action = mod ? modActions[key] : plainActions[key];
     if (!action) return;
@@ -800,8 +804,13 @@ export default function App() {
               onNext={() => next()}
               compact={settings.compactPlayer}
               onToggleCompact={() => updateSettings({ compactPlayer: !settings.compactPlayer })}
+              lyricsOpen={lyricsOpen && !!current}
+              onToggleLyrics={() => setLyricsOpen((o) => !o)}
             />
 
+            {lyricsOpen && current ? (
+              <Lyrics engine={engine} track={current} onClose={() => setLyricsOpen(false)} />
+            ) : (
             <section className="panel browse">
               <nav className="tabs" role="tablist">
                 {tabs.map(({ key, label, icon: Icon, count }) => (
@@ -838,6 +847,7 @@ export default function App() {
                 {activeTab === 'recent' && <Recent recent={recent} onClear={() => setRecent([])} />}
               </div>
             </section>
+            )}
           </div>
 
           {isWide && <aside className="side-col">{queuePanel}</aside>}
