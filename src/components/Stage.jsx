@@ -1,6 +1,7 @@
-import { useEffect, useRef } from 'react';
-import { Heart, Loader2, Maximize, Music2, ShieldCheck, TriangleAlert } from 'lucide-react';
-import { useEngineState } from '../lib/hooks';
+import { useEffect, useRef, useState } from 'react';
+import { ChevronsRight, Heart, Loader2, Maximize, Music2, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { useEngineState, useEngineTime } from '../lib/hooks';
+import { getSkipSegments, skipLabel } from '../lib/skips';
 import { thumbnail } from '../lib/youtube';
 
 function SourceBadge({ state }) {
@@ -19,7 +20,41 @@ function SourceBadge({ state }) {
   );
 }
 
-export default function Stage({ engine, track, isFavourite, onToggleFavourite }) {
+/** Netflix-style "Skip intro" button, shown only while a non-music part is playing. */
+function SkipButton({ engine, track, onNext }) {
+  const [segments, setSegments] = useState([]);
+  const { time, duration } = useEngineTime(engine);
+
+  useEffect(() => {
+    setSegments([]);
+    if (!track) return;
+    let cancelled = false;
+    getSkipSegments(track.id)
+      .then((list) => !cancelled && setSegments(list))
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [track?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // parts measured on a different-length upload would skip the wrong bit
+  const usable = segments.filter((s) => !s.videoDuration || !duration || Math.abs(s.videoDuration - duration) < 4);
+  const seg = usable.find((s) => time >= s.start && time < s.end - 0.5);
+  if (!seg) return null;
+
+  const skip = (e) => {
+    e.stopPropagation();
+    if (duration && seg.end >= duration - 1) onNext();
+    else engine.seek(seg.end);
+  };
+  return (
+    <button key={seg.start} className="skip-btn" onClick={skip}>
+      {skipLabel(seg, duration)} <ChevronsRight size={18} />
+    </button>
+  );
+}
+
+export default function Stage({ engine, track, isFavourite, onToggleFavourite, onNext }) {
   const state = useEngineState(engine);
   const hostRef = useRef(null);
   const stageRef = useRef(null);
@@ -89,6 +124,8 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite })
             <p>{state.error || 'This video could not be played.'}</p>
           </div>
         )}
+
+        {track && <SkipButton engine={engine} track={track} onNext={onNext} />}
 
         {track && (
           <div className="stage-tools">

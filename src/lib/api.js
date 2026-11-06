@@ -171,7 +171,21 @@ const fromInvidious = (v) =>
 
 // ---------- public API ----------
 
+const searchCache = new Map();
+const SEARCH_CACHE_MS = 10 * 60 * 1000;
+
 export async function search(query, filter = 'videos') {
+  // typing, deleting and retyping shouldn't hit the servers again
+  const cacheKey = `${filter}:${query.trim().toLowerCase()}`;
+  const hit = searchCache.get(cacheKey);
+  if (hit && Date.now() - hit.at < SEARCH_CACHE_MS) return hit.tracks;
+  const tracks = await searchUncached(query, filter);
+  searchCache.set(cacheKey, { at: Date.now(), tracks });
+  if (searchCache.size > 100) searchCache.delete(searchCache.keys().next().value);
+  return tracks;
+}
+
+async function searchUncached(query, filter) {
   const q = encodeURIComponent(query);
   const { tracks } = await request({
     piped: async (base) => {

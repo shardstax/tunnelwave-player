@@ -75,7 +75,7 @@ export function Results({ search, onFilter, onRetry, onOpenSettings }) {
       </Empty>
     );
   }
-  if (search.status === 'loading') return <Skeleton />;
+  if (search.status === 'loading' && !search.tracks.length) return <Skeleton />;
   if (search.status === 'error') {
     return (
       <div className="empty">
@@ -129,7 +129,13 @@ export function Results({ search, onFilter, onRetry, onOpenSettings }) {
           ))}
         </div>
       </div>
-      {search.tracks.length ? <TrackList tracks={search.tracks} /> : <Empty icon={Search} title="No results" />}
+      {search.tracks.length ? (
+        <div className={search.status === 'loading' ? 'is-stale' : ''} aria-busy={search.status === 'loading'}>
+          <TrackList tracks={search.tracks} />
+        </div>
+      ) : (
+        <Empty icon={Search} title="No results" />
+      )}
     </>
   );
 }

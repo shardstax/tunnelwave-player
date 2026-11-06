@@ -33,6 +33,7 @@ const DEFAULT_SETTINGS = {
 };
 
 const RECENT_LIMIT = 50;
+const SEARCH_DEBOUNCE_MS = 400;
 const HISTORY_LIMIT = 100;
 const IDLE_SEARCH = { status: 'idle', query: '', filter: 'videos', tracks: [], playlist: null, error: null };
 
@@ -404,6 +405,7 @@ export default function App() {
 
   // ---------- search & links ----------
 
+  const lastQueryRef = useRef('');
   const runSearch = useEvent(async (text, filter = search.filter) => {
     const query = text.trim();
     if (!query) return;
@@ -435,14 +437,28 @@ export default function App() {
       return;
     }
 
-    setSearch({ ...IDLE_SEARCH, status: 'loading', query, filter });
+    lastQueryRef.current = `${filter}:${query}`;
+    // keep the previous results on screen (dimmed) while the new ones load, so typing doesn't flicker
+    setSearch((s) => ({ ...IDLE_SEARCH, status: 'loading', query, filter, tracks: s.playlist ? [] : s.tracks }));
     try {
       const tracks = await searchApi(query, filter);
       if (seq === searchSeq.current) setSearch({ ...IDLE_SEARCH, status: 'done', query, filter, tracks });
     } catch (e) {
+      lastQueryRef.current = ''; // let the same text be retried
       if (seq === searchSeq.current) setSearch({ ...IDLE_SEARCH, status: 'error', query, filter, error: e.message });
     }
   });
+
+  // search as you type: wait for a short pause in typing, then search.
+  // Links aren't auto-run (half-typed URLs are useless); pasting or Enter handles them.
+  useEffect(() => {
+    const query = input.trim();
+    if (query.length < 2 || parseYouTubeUrl(query) || /^(https?:|www\.)|youtu\.?be/i.test(query)) return;
+    const timer = setTimeout(() => {
+      if (lastQueryRef.current !== `${search.filter}:${query}`) runSearch(query);
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+  }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---------- player wiring ----------
 
@@ -761,6 +777,7 @@ export default function App() {
               track={current}
               isFavourite={!!current && favouriteIds.has(current.id)}
               onToggleFavourite={() => current && toggleFavourite(current)}
+              onNext={() => next()}
             />
 
             <section className="panel browse">
