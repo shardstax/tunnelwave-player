@@ -3,7 +3,7 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronUp, GripVertical, ListMusic, Plus, Save, Sparkles, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, GripVertical, ListMusic, Plus, Save, Shuffle, Sparkles, Trash2, X } from 'lucide-react';
 import { useActions } from '../actions';
 import { formatTime, formatTotal } from '../lib/format';
 
@@ -55,15 +55,29 @@ const QueueItem = memo(function QueueItem({ item, index, count, onPlay, onMove, 
 });
 
 /** Spotify-style preview of what autoplay will pick once the queue runs out. */
-function Autoplay({ tracks, onPlay }) {
+function Autoplay({ tracks, onPlay, onReshuffle }) {
   const { addToQueue } = useActions();
+  const [spin, setSpin] = useState(0);
   return (
     <div className="autoplay">
       <div className="autoplay-head">
-        <h3>
-          <Sparkles size={15} /> Autoplay
-        </h3>
-        <p className="muted small">Similar music keeps playing after your queue</p>
+        <div>
+          <h3>
+            <Sparkles size={15} /> Autoplay
+          </h3>
+          <p className="muted small">Similar music keeps playing after your queue</p>
+        </div>
+        <button
+          className="icon-btn"
+          onClick={() => {
+            onReshuffle();
+            setSpin((n) => n + 1);
+          }}
+          title="Show different picks"
+          aria-label="Show different autoplay picks"
+        >
+          <Shuffle key={spin} size={16} className={spin ? 'shuffle-pop' : ''} />
+        </button>
       </div>
       <ul className="qlist">
         {tracks.map((t) => (
@@ -90,7 +104,7 @@ function Autoplay({ tracks, onPlay }) {
   );
 }
 
-function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCurrent, onClear, onSaveAsPlaylist, autoplay = [], onPlayAutoplay }) {
+function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCurrent, onClear, onSaveAsPlaylist, autoplay = [], onPlayAutoplay, onReshuffleAutoplay }) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const sensors = useSensors(
@@ -187,7 +201,7 @@ function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCu
             </SortableContext>
           </DndContext>
         )}
-        {autoplay.length > 0 && <Autoplay tracks={autoplay} onPlay={onPlayAutoplay} />}
+        {autoplay.length > 0 && <Autoplay tracks={autoplay} onPlay={onPlayAutoplay} onReshuffle={onReshuffleAutoplay} />}
       </div>
     </section>
   );

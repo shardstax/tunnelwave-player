@@ -494,21 +494,63 @@ select:focus {
   margin-bottom: 14px;
 }
 
-/* ---------- stage ---------- */
+/* ---------- now playing card ---------- */
+/* Short on purpose: the artwork sits beside the title, so search results stay in view.
+   .is-compact shrinks it to a slim strip. */
+
+.hero {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  align-items: center;
+  gap: clamp(36px, 7%, 84px);
+  padding: 20px;
+  border-radius: var(--radius);
+  overflow: hidden;
+  /* clip, not just hide: the oversized blurred background must never make the card scrollable */
+  overflow: clip;
+  color: #fff;
+  background:
+    radial-gradient(circle at 15% 20%, hsl(var(--accent-h) 70% 40% / 0.55), transparent 60%),
+    radial-gradient(circle at 85% 90%, hsl(calc(var(--accent-h) + 50) 70% 40% / 0.4), transparent 55%),
+    hsl(var(--accent-h) 30% 9%);
+  box-shadow: var(--shadow);
+  transition: padding 0.25s ease, gap 0.25s ease;
+}
+
+.hero-bg {
+  position: absolute;
+  inset: -40px;
+  z-index: -1;
+  width: calc(100% + 80px);
+  height: calc(100% + 80px);
+  object-fit: cover;
+  filter: blur(42px) saturate(1.4) brightness(0.5);
+}
+
+.hero-art {
+  position: relative;
+  flex: none;
+  width: clamp(220px, 38%, 400px);
+  transition: width 0.25s ease;
+}
+
+.hero.is-empty .hero-art {
+  display: none;
+}
 
 .stage {
   position: relative;
+  z-index: 1;
   aspect-ratio: 16 / 9;
-  max-height: 62vh;
   width: 100%;
-  border-radius: var(--radius);
+  border-radius: 12px;
   overflow: hidden;
   background: #000;
-  box-shadow: var(--shadow);
+  box-shadow: 0 18px 44px rgb(0 0 0 / 0.5), 0 0 0 1px rgb(255 255 255 / 0.08);
 }
 
 .stage:fullscreen {
-  max-height: none;
   border-radius: 0;
 }
 
@@ -527,10 +569,6 @@ select:focus {
   background: #000;
 }
 
-.stage-media[data-mode='native'] {
-  cursor: pointer;
-}
-
 .stage-media[data-mode='native'] .embed-host,
 .stage-media[data-mode='embed'] video {
   display: none;
@@ -540,45 +578,21 @@ select:focus {
   visibility: hidden;
 }
 
-.artwork {
+.artwork-cover {
   position: absolute;
   inset: 0;
-  display: grid;
-  place-items: center;
-  overflow: hidden;
-}
-
-.artwork-bg {
-  position: absolute;
-  inset: -40px;
-  width: calc(100% + 80px);
-  height: calc(100% + 80px);
-  object-fit: cover;
-  filter: blur(40px) saturate(1.4) brightness(0.55);
-}
-
-.artwork-stack {
-  position: relative;
-  width: min(60%, 560px);
-  aspect-ratio: 16 / 9;
-  transform: translateX(-7%);
-}
-
-.artwork-cover {
-  position: relative;
-  z-index: 1;
   width: 100%;
   height: 100%;
   object-fit: cover;
-  border-radius: 16px;
-  box-shadow: 0 24px 60px rgb(0 0 0 / 0.55), 0 0 0 1px rgb(255 255 255 / 0.08);
+  cursor: pointer;
 }
 
+/* record sliding out from behind the sleeve while playing */
 .vinyl {
   position: absolute;
-  top: 5%;
-  right: -22%;
-  height: 90%;
+  top: 6%;
+  right: -4%;
+  height: 88%;
   aspect-ratio: 1;
   border-radius: 50%;
   background:
@@ -600,122 +614,48 @@ select:focus {
 
 .vinyl.is-spinning {
   animation-play-state: running;
-  right: -30%;
-}
-
-.artwork-note {
-  position: absolute;
-  bottom: 14px;
-  left: 50%;
-  transform: translateX(-50%);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 5px 12px;
-  border-radius: 999px;
-  background: rgb(0 0 0 / 0.5);
-  color: #fff;
-  font-size: 12px;
-  white-space: nowrap;
-}
-
-.stage-empty {
-  position: absolute;
-  inset: 0;
-  display: grid;
-  place-content: center;
-  justify-items: center;
-  gap: 8px;
-  text-align: center;
-  padding: 24px;
-  color: #fff;
-  background:
-    radial-gradient(circle at 30% 20%, hsl(var(--accent-h) 70% 45% / 0.6), transparent 60%),
-    radial-gradient(circle at 80% 90%, hsl(calc(var(--accent-h) + 50) 70% 45% / 0.5), transparent 55%),
-    hsl(var(--accent-h) 30% 8%);
-}
-
-.stage-empty .muted {
-  color: rgb(255 255 255 / 0.7);
+  right: -16%;
 }
 
 .stage-overlay {
   position: absolute;
   inset: 0;
+  z-index: 2;
   display: grid;
   place-content: center;
   justify-items: center;
-  gap: 10px;
+  gap: 8px;
   color: #fff;
   background: rgb(0 0 0 / 0.35);
   pointer-events: none;
 }
 
 .stage-error {
-  background: rgb(0 0 0 / 0.7);
+  background: rgb(0 0 0 / 0.72);
   text-align: center;
-  padding: 24px;
+  padding: 16px;
+  font-size: 13px;
 }
 
-/* Netflix-style skip button over the artwork */
-.skip-btn {
-  position: absolute;
-  right: 16px;
-  bottom: 16px;
-  z-index: 4;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 10px 14px 10px 18px;
-  border-radius: 999px;
-  border: 1px solid rgb(255 255 255 / 0.28);
-  background: rgb(10 10 14 / 0.62);
-  backdrop-filter: blur(10px);
-  color: #fff;
-  font-size: 14px;
-  font-weight: 700;
-  box-shadow: 0 8px 24px rgb(0 0 0 / 0.35);
-  animation: skip-in 0.25s ease-out;
-  transition: background 0.15s, transform 0.15s;
-}
-
-.skip-btn:hover {
-  background: rgb(10 10 14 / 0.82);
-  transform: translateY(-1px);
-}
-
-@keyframes skip-in {
-  from {
-    opacity: 0;
-    transform: translateX(12px);
-  }
-}
-
-.stage-tools {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  left: 12px;
+.hero-info {
+  flex: 1;
+  min-width: 0;
   display: flex;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.hero-eyebrow {
+  display: flex;
   align-items: center;
-  gap: 8px;
-  pointer-events: none;
-}
-
-.stage-tools > * {
-  pointer-events: auto;
-}
-
-.stage-tools .icon-btn {
-  margin-left: auto;
-  opacity: 0;
-  transition: opacity 0.2s;
-}
-
-.stage:hover .stage-tools .icon-btn,
-.stage-tools .icon-btn:focus-visible {
-  opacity: 1;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgb(255 255 255 / 0.7);
 }
 
 .badge {
@@ -724,10 +664,12 @@ select:focus {
   gap: 5px;
   padding: 4px 10px;
   border-radius: 999px;
-  background: rgb(0 0 0 / 0.55);
+  background: rgb(0 0 0 / 0.45);
   color: #a7f3d0;
   font-size: 12px;
   font-weight: 600;
+  letter-spacing: normal;
+  text-transform: none;
   backdrop-filter: blur(8px);
 }
 
@@ -735,21 +677,10 @@ select:focus {
   color: var(--warn);
 }
 
-.now {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 16px 4px 0;
-}
-
-.now-text {
-  min-width: 0;
-}
-
 .now-title {
-  font-size: clamp(18px, 2.4vw, 24px);
+  font-size: clamp(20px, 2.3vw, 28px);
   font-weight: 800;
+  line-height: 1.2;
   letter-spacing: -0.02em;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -758,8 +689,145 @@ select:focus {
 }
 
 .now-author {
-  color: var(--text-2);
+  margin-top: 4px;
+  color: rgb(255 255 255 / 0.75);
+}
+
+.hero-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.hero .icon-btn {
+  color: #fff;
+  background: rgb(255 255 255 / 0.1);
+}
+
+.hero .icon-btn:hover {
+  background: rgb(255 255 255 / 0.2);
+}
+
+.hero .icon-btn.is-fav {
+  color: #ff5c8a;
+}
+
+.hero-collapse {
+  margin-left: auto;
+}
+
+/* Netflix-style skip button, next to the heart so it never covers the picture */
+.skip-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 36px;
+  padding: 0 12px 0 16px;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 14px;
+  font-weight: 700;
+  box-shadow: 0 6px 18px rgb(0 0 0 / 0.3);
+  animation: skip-in 0.25s ease-out;
+  transition: transform 0.15s;
+}
+
+.skip-btn:hover {
+  transform: translateY(-1px);
+}
+
+@keyframes skip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-8px);
+  }
+}
+
+.hero-empty {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.hero-empty h2 {
+  font-size: 18px;
+}
+
+.hero-empty p {
   margin-top: 2px;
+  color: rgb(255 255 255 / 0.72);
+}
+
+.hero-empty-icon {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  flex: none;
+  border-radius: 14px;
+  background: rgb(255 255 255 / 0.12);
+}
+
+/* ---- collapsed: a slim strip ---- */
+
+.hero.is-compact {
+  gap: 14px;
+  padding: 10px 12px;
+}
+
+.hero.is-compact .hero-art {
+  width: 112px;
+}
+
+/* the YouTube player stops working properly when it's tiny */
+.hero.is-compact.is-embed .hero-art {
+  width: 200px;
+}
+
+.hero.is-compact .stage {
+  border-radius: 8px;
+  box-shadow: none;
+}
+
+.hero.is-compact .vinyl,
+.hero.is-compact .hero-eyebrow,
+.hero.is-compact .stage-error p {
+  display: none;
+}
+
+.hero.is-compact .hero-info {
+  flex-direction: row;
+  align-items: center;
+  gap: 12px;
+}
+
+.hero.is-compact .hero-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.hero.is-compact .now-title {
+  font-size: 16px;
+  -webkit-line-clamp: 1;
+}
+
+.hero.is-compact .now-author {
+  margin-top: 0;
+  font-size: 13px;
+}
+
+.hero.is-compact .hero-actions {
+  flex-wrap: nowrap;
+}
+
+.hero.is-compact .hero-collapse {
+  margin-left: 0;
+}
+
+.hero.is-empty {
+  padding: 18px 20px;
 }
 
 /* ---------- tabs ---------- */
@@ -1110,7 +1178,21 @@ select:focus {
 }
 
 .autoplay-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
   margin-bottom: 8px;
+}
+
+.shuffle-pop {
+  animation: shuffle-pop 0.35s ease-out;
+}
+
+@keyframes shuffle-pop {
+  40% {
+    transform: scale(1.25) rotate(-12deg);
+  }
 }
 
 .autoplay-head h3 {
@@ -1281,10 +1363,6 @@ select:focus {
   flex: none;
   border-radius: 8px;
   object-fit: cover;
-}
-
-.artwork {
-  cursor: pointer;
 }
 
 /* ---------- shortcuts popover ---------- */
@@ -1829,12 +1907,53 @@ kbd {
     padding: 14px;
   }
 
-  .stage {
-    border-radius: 12px;
+  .hero {
+    gap: 26px;
+    padding: 14px;
   }
 
-  .stage-tools .icon-btn {
-    opacity: 1;
+  .hero-art {
+    width: 42%;
+  }
+
+  .hero-info {
+    gap: 10px;
+  }
+
+  /* the player bar already says what this is; save the line for the title */
+  .eyebrow-label {
+    display: none;
+  }
+
+  .hero-eyebrow {
+    margin-bottom: 6px;
+  }
+
+  .now-title {
+    font-size: 17px;
+  }
+
+  .now-author {
+    font-size: 14px;
+  }
+
+  .hero .icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+
+  .skip-btn {
+    height: 34px;
+    padding: 0 10px 0 12px;
+    font-size: 13px;
+  }
+
+  .hero.is-compact .hero-art {
+    width: 80px;
+  }
+
+  .hero.is-compact.is-embed .hero-art {
+    width: 160px;
   }
 
   .thumb-md {
@@ -1926,9 +2045,4 @@ kbd {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-}
-
-/* the YouTube fallback player has its own controls along the bottom */
-.stage-media[data-mode='embed'] ~ .skip-btn {
-  bottom: 70px;
 }

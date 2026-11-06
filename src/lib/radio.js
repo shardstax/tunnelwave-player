@@ -137,16 +137,41 @@ export function buildStation({ seeds, avoid, taste = EMPTY_TASTE, favouriteIds =
     })
     .sort((a, b) => b.score - a.score);
 
-  // spread artists out: take the best song that isn't by the artist we just played,
-  // unless that means reaching far down the list
+  return spreadArtists(
+    ranked.map((r) => r.track),
+    current,
+  ).slice(0, limit);
+}
+
+/**
+ * Spread artists out: take the best song that isn't by the artist we just played,
+ * unless that means reaching far down the list.
+ */
+function spreadArtists(tracks, current) {
+  const pool = [...tracks];
   const out = [];
   let lastArtist = current ? artistKey(current.author) : '';
-  while (ranked.length && out.length < limit) {
-    let i = ranked.findIndex((r, idx) => idx < 6 && artistKey(r.track.author) !== lastArtist);
+  while (pool.length) {
+    let i = pool.findIndex((t, idx) => idx < 6 && artistKey(t.author) !== lastArtist);
     if (i === -1) i = 0;
-    const [pick] = ranked.splice(i, 1);
-    out.push(pick.track);
-    lastArtist = artistKey(pick.track.author);
+    const [pick] = pool.splice(i, 1);
+    out.push(pick);
+    lastArtist = artistKey(pick.author);
   }
   return out;
+}
+
+/**
+ * "Show me different picks": songs already offered (`passed`) drop to the back, and the
+ * next-best ~20 are shuffled so each press brings up a fresh, still-similar set.
+ */
+export function reshuffleStation(tracks, passed, current) {
+  const fresh = tracks.filter((t) => !passed.has(t.id));
+  const seen = tracks.filter((t) => passed.has(t.id));
+  const top = fresh.slice(0, 20);
+  for (let i = top.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [top[i], top[j]] = [top[j], top[i]];
+  }
+  return spreadArtists([...top, ...fresh.slice(20), ...seen], current);
 }

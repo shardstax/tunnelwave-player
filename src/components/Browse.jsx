@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowLeft, Clock, Heart, ListMusic, ListPlus, Pencil, Play, Plus, Search, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Clock, Heart, ListMusic, ListPlus, Pencil, Play, Plus, Search, Shuffle, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
 import TrackRow from './TrackRow';
 import { useActions } from '../actions';
 import { formatTotal } from '../lib/format';
@@ -41,7 +41,7 @@ function TrackList({ tracks, onRemove, removeLabel }) {
 }
 
 /** Buttons shown above any group of songs: play all / add all / save. */
-function BulkBar({ tracks, saveName }) {
+function BulkBar({ tracks, saveName, onReshuffle }) {
   const { addToQueue, replaceQueue, createPlaylist, toast } = useActions();
   if (!tracks.length) return null;
   return (
@@ -52,6 +52,11 @@ function BulkBar({ tracks, saveName }) {
       <button className="btn btn-soft btn-sm" onClick={() => addToQueue(tracks)}>
         <Plus size={15} /> Add all to queue
       </button>
+      {onReshuffle && (
+        <button className="btn btn-soft btn-sm" onClick={onReshuffle} title="Show different picks">
+          <Shuffle size={15} /> Different picks
+        </button>
+      )}
       {saveName && (
         <button
           className="btn btn-soft btn-sm"
@@ -140,7 +145,7 @@ export function Results({ search, onFilter, onRetry, onOpenSettings }) {
   );
 }
 
-export function Suggestions({ tracks, loading, basedOn, autoRadio, onToggleAutoRadio, hasTrack }) {
+export function Suggestions({ tracks, loading, basedOn, autoRadio, onToggleAutoRadio, onReshuffle, hasTrack }) {
   return (
     <>
       <div className="list-head">
@@ -163,7 +168,7 @@ export function Suggestions({ tracks, loading, basedOn, autoRadio, onToggleAutoR
         <Skeleton />
       ) : tracks.length ? (
         <>
-          <BulkBar tracks={tracks} />
+          <BulkBar tracks={tracks} onReshuffle={onReshuffle} />
           <TrackList tracks={tracks} />
         </>
       ) : (

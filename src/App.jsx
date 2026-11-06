@@ -3,7 +3,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { Clock, Heart, ListMusic, Library, Search, Settings as SettingsIcon, Sparkles, X } from 'lucide-react';
 import { ActionsContext } from './actions';
 import { getPlaylist, getRadio, getVideo, search as searchApi, setCustomInstance } from './lib/api';
-import { EMPTY_TASTE, buildStation, nudgeTaste } from './lib/radio';
+import { EMPTY_TASTE, buildStation, nudgeTaste, reshuffleStation } from './lib/radio';
 import { extractAccent } from './lib/color';
 import { PlayerEngine } from './lib/engine';
 import { shuffled, uid } from './lib/format';
@@ -26,6 +26,7 @@ const DEFAULT_SETTINGS = {
   repeat: 'off', // off | all | one
   seekStep: 5, // seconds for ← / →
   volumeStep: 5, // percent for Ctrl + ↑ / ↓
+  compactPlayer: false, // now-playing card collapsed to a slim strip
   dubLanguage: '', // '' = original audio; otherwise e.g. 'hi' to prefer a Hindi dub when a video has one
   volume: 0.9,
   muted: false,
@@ -226,13 +227,31 @@ export default function App() {
     setStation((s) => (s.forId === id ? s : { forId: id, status: 'loading', tracks: [] }));
     const promise = computeStation(current).catch(() => []);
     stationRef.current = { forId: id, promise };
-    promise.then((tracks) => !cancelled && setStation({ forId: id, status: 'done', tracks }));
+    promise.then((tracks) => {
+      if (cancelled) return;
+      // a rebuild shouldn't bring back picks the user already shuffled away
+      const passed = passedRef.current.forId === id ? passedRef.current.ids : null;
+      if (passed?.size) tracks = [...tracks.filter((t) => !passed.has(t.id)), ...tracks.filter((t) => passed.has(t.id))];
+      setStation({ forId: id, status: 'done', tracks });
+    });
     return () => {
       cancelled = true;
     };
     // related videos arrive a moment after the song starts; mixes are cached, so rebuilding is cheap
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, engineState.related]);
+
+  // "Show different picks": the songs on screen move to the back and a fresh similar set comes up
+  const passedRef = useRef({ forId: null, ids: new Set() });
+  const reshuffleRadio = useEvent(() => {
+    if (!current || station.forId !== current.id || !station.tracks.length) return;
+    const prev = passedRef.current.forId === current.id ? passedRef.current.ids : new Set();
+    let ids = new Set([...prev, ...radioTracks.slice(0, 5).map((t) => t.id)]);
+    // went through everything: start the cycle again
+    if (station.tracks.filter((t) => !ids.has(t.id)).length < 5) ids = new Set(radioTracks.slice(0, 5).map((t) => t.id));
+    passedRef.current = { forId: current.id, ids };
+    setStation((s) => ({ ...s, tracks: reshuffleStation(s.tracks, ids, current) }));
+  });
 
   // what autoplay will actually play, minus anything you've queued since
   const radioTracks = useMemo(() => {
@@ -722,6 +741,7 @@ export default function App() {
       onSaveAsPlaylist={saveQueueAsPlaylist}
       autoplay={settings.autoRadio ? radioTracks.slice(0, 5) : []}
       onPlayAutoplay={playNow}
+      onReshuffleAutoplay={reshuffleRadio}
     />
   );
 
@@ -778,6 +798,8 @@ export default function App() {
               isFavourite={!!current && favouriteIds.has(current.id)}
               onToggleFavourite={() => current && toggleFavourite(current)}
               onNext={() => next()}
+              compact={settings.compactPlayer}
+              onToggleCompact={() => updateSettings({ compactPlayer: !settings.compactPlayer })}
             />
 
             <section className="panel browse">
@@ -808,6 +830,7 @@ export default function App() {
                     hasTrack={!!current}
                     autoRadio={settings.autoRadio}
                     onToggleAutoRadio={() => updateSettings({ autoRadio: !settings.autoRadio })}
+                    onReshuffle={reshuffleRadio}
                   />
                 )}
                 {activeTab === 'favourites' && <Favourites favourites={favourites} />}
