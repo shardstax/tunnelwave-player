@@ -25,7 +25,8 @@
 
 **Playback**
 - 🎧 **Ad-free audio** streamed through open-source YouTube front-ends ([Piped](https://github.com/TeamPiped/Piped) / [Invidious](https://invidious.io))
-- 🔁 **Automatic failover**: if one server is down, the next one is tried; if all fail, it falls back to the official YouTube player
+- 🔁 **Fast automatic failover**: servers are raced and the first to answer wins; a song that stalls switches to another server mid-way without losing its place, and dead servers are skipped for a while. If all fail, it falls back to the official YouTube player
+- 📺 **Ad-free servers can be turned off** in Settings (or with `Alt` + `S`) to always use the regular YouTube player
 - 🔍 **Search** by song or video name, with a *Videos / Songs* filter
 - 🔗 **Paste any YouTube link**: videos, `youtu.be`, Shorts, YouTube Music, and whole **playlists**
 - 🌐 **Audio language picker**: on videos with dubbed audio, switch languages mid-song without losing your place. Plays the original by default, or set a preferred language in Settings
@@ -66,6 +67,7 @@
 | `R` | Repeat mode |
 | `M` | Mute |
 | `L` | Show / hide lyrics |
+| `Alt` + `S` | Ad-free servers on / off |
 | `Alt` + `/` | Show all shortcuts |
 
 On macOS, use `⌘` instead of `Ctrl`.

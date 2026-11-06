@@ -1,5 +1,5 @@
 // Talks to public Piped / Invidious instances (open-source YouTube front-ends).
-// Instances go down often, so every call walks a list of them until one answers.
+// Instances go down often, so every call races several of them and takes the first answer.
 import { thumbnail, toTrack } from './youtube';
 
 export const DEFAULT_INSTANCES = [
@@ -12,8 +12,13 @@ export const DEFAULT_INSTANCES = [
   { type: 'invidious', base: 'https://invidious.nerdvpn.de' },
 ];
 
-const TIMEOUT_MS = 9000;
+const TIMEOUT_MS = 5000;
+// the server that worked last time gets a short head start before we ask all the others at once
+const HEAD_START_MS = 1200;
 const LAST_GOOD_KEY = 'tq.lastGoodInstance';
+// servers that just failed are tried last for a while, instead of first on every song
+const DEAD_KEY = 'tq.deadInstances';
+const DEAD_FOR_MS = 10 * 60 * 1000;
 const DISCOVERED_KEY = 'tq.discoveredInstances';
 const DISCOVERY_TTL = 6 * 60 * 60 * 1000;
 
@@ -53,10 +58,26 @@ async function getJSON(url) {
   }
 }
 
+function deadServers() {
+  const now = Date.now();
+  return Object.fromEntries(Object.entries(readJSON(DEAD_KEY, {})).filter(([, until]) => until > now));
+}
+
+/** Skip this server for the next 10 minutes (it failed, or its audio never started). */
+export function markDead(base) {
+  if (!base || base === customInstance?.base) return;
+  writeJSON(DEAD_KEY, { ...deadServers(), [base]: Date.now() + DEAD_FOR_MS });
+  if (readJSON(LAST_GOOD_KEY, null) === base) writeJSON(LAST_GOOD_KEY, null);
+}
+
 function candidates(exclude, prefer) {
   const lastGood = readJSON(LAST_GOOD_KEY, null);
   const discovered = readJSON(DISCOVERED_KEY, { list: [] }).list;
+  const dead = deadServers();
   const all = [...DEFAULT_INSTANCES, ...discovered];
+  // servers that failed recently go to the back of the line (never skipped: on a bad day the
+  // "slow" one may be the only one that works at all)
+  all.sort((a, b) => !!dead[a.base] - !!dead[b.base]);
   // last instance that worked goes first; a custom instance always goes before that
   all.sort((a, b) => (b.base === lastGood) - (a.base === lastGood));
   // some calls only work (well) on one kind of server
@@ -93,36 +114,67 @@ export async function discoverInstances() {
 }
 
 /**
- * Runs `op[type](base)` against instances until one succeeds.
- * Tries the preferred instance alone first, then the rest in parallel batches.
- * `remember: false` keeps side requests (like radio) from changing which server playback tries first.
+ * Asks the first server, and if it hasn't answered within HEAD_START_MS (or fails sooner),
+ * asks all the others at the same time. The first good answer wins.
+ */
+function race(list, op, { remember, tried }) {
+  return new Promise((resolve, reject) => {
+    let left = list.length;
+    let done = false;
+    let restStarted = false;
+    let lastError;
+    const failed = [];
+
+    const run = (inst) => {
+      tried.add(inst.base);
+      op[inst.type](inst.base).then(
+        (result) => {
+          if (done) return;
+          done = true;
+          clearTimeout(timer);
+          if (remember) {
+            // another server managed it, so the ones that failed are the problem (not the video)
+            failed.forEach(markDead);
+            writeJSON(LAST_GOOD_KEY, inst.base);
+          }
+          resolve({ ...result, source: inst });
+        },
+        (err) => {
+          lastError = err;
+          failed.push(inst.base);
+          if (!restStarted) startRest();
+          if (--left === 0 && !done) reject(lastError);
+        },
+      );
+    };
+    const startRest = () => {
+      if (restStarted) return;
+      restStarted = true;
+      clearTimeout(timer);
+      list.slice(1).forEach(run);
+    };
+
+    run(list[0]);
+    const timer = setTimeout(startRest, HEAD_START_MS);
+  });
+}
+
+/**
+ * Runs `op[type](base)` against instances until one succeeds (see race).
+ * `remember: false` keeps side requests (like radio) from changing which server playback tries first,
+ * and from marking servers dead when they just don't support that request.
  */
 async function request(op, exclude = new Set(), { prefer, remember = true } = {}) {
   const tried = new Set(exclude);
   let lastError;
 
-  const attempt = async (inst) => {
-    tried.add(inst.base);
-    const result = await op[inst.type](inst.base);
-    if (remember) writeJSON(LAST_GOOD_KEY, inst.base);
-    return { ...result, source: inst };
-  };
-
   for (let pass = 0; pass < 2; pass++) {
     const list = candidates(tried, prefer);
     if (list.length) {
       try {
-        return await attempt(list[0]);
+        return await race(list, op, { remember, tried });
       } catch (e) {
         lastError = e;
-      }
-      const rest = list.slice(1);
-      for (let i = 0; i < rest.length; i += 3) {
-        try {
-          return await Promise.any(rest.slice(i, i + 3).map(attempt));
-        } catch (e) {
-          lastError = e.errors?.at(-1) ?? e;
-        }
       }
     }
     // everything failed: refresh the instance directory once and go again

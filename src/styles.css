@@ -2305,3 +2305,18 @@ kbd {
     padding: 14vh 0 24vh;
   }
 }
+
+/* "Trying another server…" under the artist while a song is starting */
+.now-note {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  color: #fde68a;
+}
+
+.hero.is-compact .now-note {
+  margin-top: 2px;
+  font-size: 12px;
+}

@@ -112,6 +112,16 @@ export default function Settings({ settings, onUpdate, source, onExport, onImpor
 
         <section className="setting">
           <h3>Ad-free server</h3>
+          <label className="switch">
+            <input type="checkbox" checked={settings.adFree} onChange={(e) => onUpdate({ adFree: e.target.checked })} />
+            <span className="switch-track" />
+            Play through ad-free servers
+          </label>
+          {!settings.adFree && (
+            <p className="muted small">
+              Off: songs play in the regular YouTube player, so YouTube ads may show. Search and radio still use these servers.
+            </p>
+          )}
           <p className="muted small">
             Songs stream through public <a href="https://github.com/TeamPiped/Piped" target="_blank" rel="noreferrer">Piped</a> /{' '}
             <a href="https://invidious.io" target="_blank" rel="noreferrer">Invidious</a> servers. If one goes down the app tries the next

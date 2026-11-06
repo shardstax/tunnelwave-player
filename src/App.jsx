@@ -3,7 +3,7 @@ import { arrayMove } from '@dnd-kit/sortable';
 import { Clock, Heart, ListMusic, Library, Search, Settings as SettingsIcon, Sparkles, X } from 'lucide-react';
 import { ActionsContext } from './actions';
 import { getPlaylist, getRadio, getVideo, search as searchApi, setCustomInstance } from './lib/api';
-import { EMPTY_TASTE, buildStation, nudgeTaste, reshuffleStation } from './lib/radio';
+import { EMPTY_TASTE, buildStation, nudgeTaste, reshuffleStation, songKey } from './lib/radio';
 import { extractAccent } from './lib/color';
 import { PlayerEngine } from './lib/engine';
 import { shuffled, uid } from './lib/format';
@@ -29,6 +29,7 @@ const DEFAULT_SETTINGS = {
   volumeStep: 5, // percent for Ctrl + ↑ / ↓
   compactPlayer: false, // now-playing card collapsed to a slim strip
   dubLanguage: '', // '' = original audio; otherwise e.g. 'hi' to prefer a Hindi dub when a video has one
+  adFree: true, // false: play everything in the regular YouTube player
   volume: 0.9,
   muted: false,
   customInstance: { type: 'piped', base: '' },
@@ -43,6 +44,8 @@ const IDLE_SEARCH = { status: 'idle', query: '', filter: 'videos', tracks: [], p
 const withUid = (track) => ({ ...toTrack(track), uid: uid(), ...(track.fromRadio && { fromRadio: true }) });
 const IDLE_STATION = { forId: null, status: 'idle', tracks: [] };
 const RADIO_SEED_WEIGHTS = [1, 0.45, 0.25];
+// when a running station gets this short, more picks are added to the end
+const STATION_TOP_UP_AT = 10;
 
 // fields where keys should type text instead of triggering shortcuts
 const NON_TEXT_INPUTS = ['range', 'checkbox', 'radio', 'button', 'submit', 'reset', 'color', 'file'];
@@ -189,8 +192,9 @@ export default function App() {
 
   // ---------- autoplay radio ----------
 
-  // Rebuilt for every song: blends YouTube's radio for this song and the last two,
+  // Built when you play something new: blends YouTube's radio for this song and the last two,
   // then filters and re-ranks it with what we've learnt about the listener.
+  // Songs played from the station keep it going instead of rebuilding it (see below).
   const [station, setStation] = useState(IDLE_STATION);
   const stationRef = useRef({ forId: null, promise: null });
   const currentRef = useRef(current);
@@ -218,6 +222,9 @@ export default function App() {
     });
   });
 
+  const latestStation = useRef(station);
+  latestStation.current = station;
+
   useEffect(() => {
     if (!current) {
       setStation(IDLE_STATION);
@@ -226,6 +233,35 @@ export default function App() {
     }
     let cancelled = false;
     const id = current.id;
+
+    // Like Spotify: a song picked from autoplay (by you or automatically) carries on the same
+    // station. The list stays as it was, minus that song, and fresh picks are only added to the end.
+    const prev = latestStation.current;
+    if (prev.status === 'done' && (prev.forId === id || prev.tracks.some((t) => t.id === id))) {
+      const rest = prev.tracks.filter((t) => t.id !== id);
+      if (prev.forId !== id) {
+        setStation({ forId: id, status: 'done', tracks: rest });
+        if (passedRef.current.forId === prev.forId) passedRef.current = { ...passedRef.current, forId: id };
+      }
+      stationRef.current = { forId: id, promise: Promise.resolve(rest) };
+      if (rest.length >= STATION_TOP_UP_AT) return;
+      computeStation(current)
+        .then((fresh) => {
+          if (cancelled) return;
+          setStation((s) => {
+            if (s.forId !== id) return s;
+            const have = new Set(s.tracks.map((t) => t.id));
+            const keys = s.tracks.map(songKey);
+            const extra = fresh.filter((t) => !have.has(t.id) && !keys.includes(songKey(t)));
+            return { ...s, tracks: [...s.tracks, ...extra] };
+          });
+        })
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
+
     setStation((s) => (s.forId === id ? s : { forId: id, status: 'loading', tracks: [] }));
     const promise = computeStation(current).catch(() => []);
     stationRef.current = { forId: id, promise };
@@ -490,6 +526,7 @@ export default function App() {
     // (browsers block autoplay until then anyway)
     const autoplay = navigator.userActivation ? navigator.userActivation.hasBeenActive : autoplayRef.current;
     engine.preferredLang = settings.dubLanguage || null;
+    engine.adFree = settings.adFree;
     if (current) engine.load(current, { autoplay });
     else engine.stop();
     autoplayRef.current = true;
@@ -498,6 +535,7 @@ export default function App() {
 
   useEffect(() => engine.setVolume(settings.volume, settings.muted), [engine, settings.volume, settings.muted]);
   useEffect(() => engine.setPreferredLang(settings.dubLanguage || null), [engine, settings.dubLanguage]);
+  useEffect(() => engine.setAdFree(settings.adFree), [engine, settings.adFree]);
 
   const recordedRef = useRef(null);
   const onEngineState = useEvent(() => {
@@ -519,7 +557,7 @@ export default function App() {
   // warm up the next song's stream so skipping or auto-advancing starts fast
   const upNextId = queue[0]?.id ?? (settings.autoRadio ? radioTracks[0]?.id : undefined);
   useEffect(() => {
-    if (engineState.status !== 'playing' || !upNextId) return;
+    if (engineState.status !== 'playing' || !upNextId || !settings.adFree) return;
     const timer = setTimeout(() => getVideo(upNextId).catch(() => {}), 8000);
     return () => clearTimeout(timer);
   }, [engineState.status === 'playing', upNextId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -601,6 +639,13 @@ export default function App() {
     if (e.altKey && e.code === 'Slash') {
       claim();
       setShortcutsOpen((o) => !o);
+      return;
+    }
+    if (e.altKey && e.code === 'KeyS') {
+      claim();
+      const on = !settings.adFree;
+      updateSettings({ adFree: on });
+      toast(on ? 'Ad-free servers on' : 'Ad-free servers off: using the YouTube player');
       return;
     }
     // little extra, intentionally not listed

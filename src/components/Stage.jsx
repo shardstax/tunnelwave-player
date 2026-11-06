@@ -1,11 +1,18 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, ChevronsRight, Heart, Loader2, Maximize, MicVocal, Music2, ShieldCheck, TriangleAlert } from 'lucide-react';
+import { ChevronDown, ChevronUp, ChevronsRight, Heart, Loader2, Maximize, MicVocal, Music2, ShieldCheck, TriangleAlert, Youtube } from 'lucide-react';
 import { useEngineState, useEngineTime } from '../lib/hooks';
 import { getSkipSegments, skipLabel } from '../lib/skips';
 import { thumbnail } from '../lib/youtube';
 
 function SourceBadge({ state }) {
   if (!state.source) return null;
+  if (state.source.type === 'youtube' && state.source.reason === 'off') {
+    return (
+      <span className="badge badge-warn" title="Ad-free servers are turned off in Settings, so the official YouTube player is used.">
+        <Youtube size={13} /> YouTube player
+      </span>
+    );
+  }
   if (state.source.type === 'youtube') {
     return (
       <span className="badge badge-warn" title="No ad-free source was reachable, so the official YouTube player is used.">
@@ -127,6 +134,11 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite, o
               {track.title}
             </h1>
             <p className="now-author">{track.author}</p>
+            {state.note && (
+              <p className="now-note" role="status">
+                {state.status === 'loading' && <Loader2 className="spin" size={13} />} {state.note}
+              </p>
+            )}
           </div>
           <div className="hero-actions">
             <SkipButton engine={engine} track={track} onNext={onNext} />

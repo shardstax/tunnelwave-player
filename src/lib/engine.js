@@ -1,8 +1,18 @@
 // One player for the whole app. Prefers an ad-free stream in a plain <video> element;
 // if every stream source fails it falls back to the official YouTube embed.
-import { getVideo } from './api';
+import { getVideo, markDead } from './api';
 
 const MAX_STREAM_ATTEMPTS = 4;
+// A server whose audio hasn't started by now is treated as stuck, and we move on to the next one.
+// Measured: a busy server can take 5–12s to start a song (and sends nothing until then), while a
+// truly stuck one goes past 25s, so 15s separates the two without cutting off slow-but-working ones.
+const START_TIMEOUT_MS = 15000;
+// ...and if it has at least started sending the file, it gets this much more
+const START_EXTRA_MS = 10000;
+// buffering this long in the middle of a song: same thing
+const STALL_TIMEOUT_MS = 10000;
+// say what's going on if finding a server takes a while
+const SLOW_NOTE_MS = 3000;
 
 let ytApiPromise = null;
 function loadYouTubeApi() {
@@ -69,6 +79,7 @@ const INITIAL_STATE = {
   related: [],
   meta: null,
   error: null,
+  note: null, // short status line under the spinner, e.g. "Trying another server…"
 };
 
 export class PlayerEngine extends EventTarget {
@@ -82,6 +93,8 @@ export class PlayerEngine extends EventTarget {
     this.chosenLang = null; // language picked by hand for the current video
     this.volume = 1;
     this.muted = false;
+    this.adFree = true; // false: always use the YouTube player (Settings)
+    this.watchdog = null;
 
     this.embedEl = document.createElement('div');
     this.embedEl.className = 'embed-host';
@@ -90,15 +103,21 @@ export class PlayerEngine extends EventTarget {
     v.playsInline = true;
     v.preload = 'auto';
     v.addEventListener('playing', () => {
+      this.clearWatchdog();
       this.switching = false;
+      if (this.state.note) this.set({ note: null });
       // paused by the user while the stream was still starting
       if (!this.wantPlay) return v.pause();
       this.set({ status: 'playing' });
     });
     v.addEventListener('pause', () => {
+      this.clearWatchdog();
       if (!this.switching && this.state.mode === 'native' && !v.ended) this.set({ status: 'paused' });
     });
-    v.addEventListener('waiting', () => this.set({ status: 'loading' }));
+    v.addEventListener('waiting', () => {
+      this.set({ status: 'loading' });
+      if (this.wantPlay && !this.watchdog) this.armWatchdog(STALL_TIMEOUT_MS, 'stall');
+    });
     v.addEventListener('timeupdate', () => this.emit('time'));
     v.addEventListener('durationchange', () => this.emit('time'));
     v.addEventListener('ended', () => {
@@ -140,17 +159,29 @@ export class PlayerEngine extends EventTarget {
     this.destroyEmbed();
     this.switching = true;
     this.video.pause();
+    this.clearWatchdog();
+    if (!this.adFree) {
+      this.stopNative();
+      this.set({ ...INITIAL_STATE });
+      return this.loadEmbed(token, startAt, autoplay, 'off');
+    }
     this.set({ ...INITIAL_STATE, status: 'loading', mode: 'native' });
     await this.loadNative(token, startAt, autoplay);
   }
 
   async loadNative(token, startAt, autoplay) {
+    this.resumeAt = startAt;
     let info;
+    const slow = setTimeout(() => {
+      if (token === this.token && !this.state.note) this.set({ note: 'Looking for a working server…' });
+    }, SLOW_NOTE_MS);
     try {
       info = await getVideo(this.track.id, { exclude: this.excluded });
     } catch (e) {
-      if (token === this.token) this.loadEmbed(token, startAt, autoplay);
+      if (token === this.token) this.loadEmbed(token, startAt, autoplay, 'fallback');
       return;
+    } finally {
+      clearTimeout(slow);
     }
     if (token !== this.token) return;
     // the user may have pressed play/pause while we were fetching
@@ -185,6 +216,7 @@ export class PlayerEngine extends EventTarget {
     }
     this.switching = true;
     v.src = stream.url;
+    this.startExtended = false;
     v.volume = this.volume;
     v.muted = this.muted;
     if (startAt > 0) v.addEventListener('loadedmetadata', () => (v.currentTime = startAt), { once: true });
@@ -194,8 +226,10 @@ export class PlayerEngine extends EventTarget {
       this.set({ status: 'paused' });
       return;
     }
+    this.armWatchdog(START_TIMEOUT_MS);
     v.play().catch((err) => {
       if (token !== this.token || err.name !== 'NotAllowedError') return;
+      this.clearWatchdog();
       // browser blocked autoplay (e.g. right after a page reload) — wait for a click
       this.switching = false;
       this.wantPlay = false;
@@ -205,8 +239,62 @@ export class PlayerEngine extends EventTarget {
 
   onNativeError() {
     if (this.state.mode !== 'native' || !this.video.getAttribute('src')) return;
-    if (this.state.source) this.excluded.add(this.state.source.base);
-    this.retry(this.token, this.video.currentTime, true);
+    this.clearWatchdog();
+    this.dropSource();
+    this.set({ note: 'That server failed, trying another…' });
+    this.retry(this.token, this.video.currentTime || this.resumeAt || 0, true);
+  }
+
+  /** Stop using the current server for this song (and skip it for a while). */
+  dropSource() {
+    const base = this.state.source?.base;
+    if (!base) return;
+    this.excluded.add(base);
+    markDead(base);
+  }
+
+  // ---------- stall watchdog ----------
+  // A stream that fails raises an error, but one that just hangs never does. Without this the
+  // spinner could spin forever, so after a while we treat silence as failure and move on.
+  // Servers vary a lot (the same one can start in 1s or 11s), so a slow start that is clearly
+  // receiving data gets extra time; one that has sent nothing at all is dropped quickly.
+
+  armWatchdog(ms, kind = 'start') {
+    clearTimeout(this.watchdog);
+    const token = this.token;
+    this.watchdogKind = kind;
+    this.watchdog = setTimeout(() => {
+      this.watchdog = null;
+      this.onStall(token);
+    }, ms);
+    // let the user know it's slow, not broken
+    clearTimeout(this.slowTimer);
+    this.slowTimer = setTimeout(() => {
+      if (token === this.token && this.watchdog && !this.state.note) this.set({ note: 'Server is slow right now, still loading…' });
+    }, 5000);
+  }
+
+  clearWatchdog() {
+    clearTimeout(this.watchdog);
+    clearTimeout(this.slowTimer);
+    this.watchdog = null;
+  }
+
+  onStall(token) {
+    const v = this.video;
+    if (token !== this.token || this.state.mode !== 'native' || !this.wantPlay || !v.getAttribute('src')) return;
+    if (!v.paused && v.readyState >= 3) return; // it recovered on its own
+    if (this.watchdogKind === 'start' && !this.startExtended && v.readyState >= 1) {
+      // the song's details arrived, the audio is just slow to follow: give it a bit longer
+      this.startExtended = true;
+      this.set({ note: 'This server is slow today, still loading…' });
+      this.armWatchdog(START_EXTRA_MS, 'start');
+      return;
+    }
+    const at = v.currentTime > 0 ? v.currentTime : this.resumeAt || 0;
+    this.dropSource();
+    this.set({ note: 'That server is too slow, trying another…' });
+    this.retry(token, at, true);
   }
 
   retry(token, startAt, autoplay) {
@@ -215,13 +303,16 @@ export class PlayerEngine extends EventTarget {
     return this.loadNative(token, startAt, autoplay);
   }
 
-  async loadEmbed(token, startAt, autoplay) {
+  /** @param reason 'off' (ad-free servers turned off in Settings) or 'fallback' (none of them worked) */
+  async loadEmbed(token, startAt, autoplay, reason = 'fallback') {
+    this.clearWatchdog();
     this.stopNative();
     this.set({
       mode: 'embed',
       status: 'loading',
       showVideo: true,
-      source: { type: 'youtube', base: 'youtube-nocookie.com' },
+      source: { type: 'youtube', base: 'youtube-nocookie.com', reason },
+      note: reason === 'fallback' ? 'No ad-free server worked, so using the YouTube player' : null,
     });
 
     let YT;
@@ -253,7 +344,7 @@ export class PlayerEngine extends EventTarget {
         },
         onStateChange: (e) => {
           if (token !== this.token) return;
-          if (e.data === S.PLAYING) this.set({ status: 'playing' });
+          if (e.data === S.PLAYING) this.set({ status: 'playing', note: null });
           else if (e.data === S.PAUSED) this.set({ status: 'paused' });
           else if (e.data === S.BUFFERING) this.set({ status: 'loading' });
           else if (e.data === S.ENDED) {
@@ -292,6 +383,7 @@ export class PlayerEngine extends EventTarget {
 
   stop() {
     this.token++;
+    this.clearWatchdog();
     this.track = null;
     this.destroyEmbed();
     this.stopNative();
@@ -303,7 +395,10 @@ export class PlayerEngine extends EventTarget {
   play() {
     this.wantPlay = true;
     if (this.state.mode === 'embed') this.yt?.playVideo?.();
-    else if (this.video.getAttribute('src')) this.video.play().catch(() => {});
+    else if (this.video.getAttribute('src')) {
+      if (this.video.readyState < 3) this.armWatchdog(START_TIMEOUT_MS);
+      this.video.play().catch(() => {});
+    }
   }
 
   pause() {
@@ -329,6 +424,16 @@ export class PlayerEngine extends EventTarget {
     }
     if (running) this.pause();
     else this.play();
+  }
+
+  /** Turn the ad-free servers on or off (Settings). Reloads the current song where it was. */
+  setAdFree(on) {
+    if (on === this.adFree) return;
+    this.adFree = on;
+    if (!this.track) return;
+    const at = this.currentTime;
+    const play = this.switching ? this.wantPlay : this.state.status === 'playing' || this.state.status === 'loading';
+    this.load(this.track, { startAt: at, autoplay: play });
   }
 
   /** Preferred dub language from Settings ('hi', 'es', … or null for the original); applies right away. */
