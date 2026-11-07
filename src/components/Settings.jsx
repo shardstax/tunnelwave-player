@@ -73,6 +73,20 @@ export default function Settings({ settings, onUpdate, source, onExport, onImpor
             <span className="switch-track" />
             When the queue ends, keep playing suggested songs
           </label>
+          <label className="switch">
+            <input type="checkbox" checked={settings.dataSaver} onChange={(e) => onUpdate({ dataSaver: e.target.checked })} />
+            <span className="switch-track" />
+            <span>
+              Data saver
+              <br />
+              <span className="muted small">
+                {settings.dataSaver
+                  ? 'Songs only download while they play. Skipping can take a moment to start.'
+                  : 'Off: the next song downloads in the background (about 4 MB) so skips start instantly.'}
+                {!settings.dataSaver && navigator.connection?.saveData && ' Your browser’s data saver is on, so this stays off anyway.'}
+              </span>
+            </span>
+          </label>
           <div className="setting-row">
             <span>Seek with ← / →</span>
             <div className="segmented">

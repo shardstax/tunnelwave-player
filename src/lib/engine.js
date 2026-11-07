@@ -1,6 +1,7 @@
 // One player for the whole app. Prefers an ad-free stream in a plain <video> element;
 // if every stream source fails it falls back to the official YouTube embed.
 import { getVideo, markDead } from './api';
+import { AudioPreloader, MAX_PRELOAD_SECONDS, preloadSupported } from './preload';
 
 const MAX_STREAM_ATTEMPTS = 4;
 // A server whose audio hasn't started by now is treated as stuck, and we move on to the next one.
@@ -95,6 +96,10 @@ export class PlayerEngine extends EventTarget {
     this.muted = false;
     this.adFree = true; // false: always use the YouTube player (Settings)
     this.watchdog = null;
+    // next song's audio, downloaded ahead of time (Settings → "Preload the next song")
+    this.preloader = new AudioPreloader();
+    this.preloadOn = preloadSupported();
+    this.fromMemory = false; // the current song is playing from a preloaded copy
 
     this.embedEl = document.createElement('div');
     this.embedEl.className = 'embed-host';
@@ -156,6 +161,9 @@ export class PlayerEngine extends EventTarget {
     this.attempts = 0;
     this.chosenLang = null;
     this.wantPlay = autoplay;
+    // only this song's preloaded copy (if any) is still useful; the app asks for the next one later
+    this.preloader.pinned = track.id;
+    this.preloader.keepOnly([track.id]);
     this.destroyEmbed();
     this.switching = true;
     this.video.pause();
@@ -215,7 +223,12 @@ export class PlayerEngine extends EventTarget {
       return;
     }
     this.switching = true;
-    v.src = stream.url;
+    // preloaded: play the downloaded copy, which starts instantly and can't stall
+    const memoryUrl = this.preloader.ready(this.track.id, stream.url);
+    // still downloading: don't fetch the same song twice, stream it the normal way instead
+    if (!memoryUrl) this.preloader.drop(this.track.id);
+    this.fromMemory = !!memoryUrl;
+    v.src = memoryUrl || stream.url;
     this.startExtended = false;
     v.volume = this.volume;
     v.muted = this.muted;
@@ -240,6 +253,12 @@ export class PlayerEngine extends EventTarget {
   onNativeError() {
     if (this.state.mode !== 'native' || !this.video.getAttribute('src')) return;
     this.clearWatchdog();
+    if (this.fromMemory) {
+      // the downloaded copy didn't play: forget it and stream as usual (the server isn't at fault)
+      this.fromMemory = false;
+      this.preloader.drop(this.track.id);
+      return this.loadNative(this.token, this.video.currentTime || this.resumeAt || 0, true);
+    }
     this.dropSource();
     this.set({ note: 'That server failed, trying another…' });
     this.retry(this.token, this.video.currentTime || this.resumeAt || 0, true);
@@ -387,6 +406,8 @@ export class PlayerEngine extends EventTarget {
     this.track = null;
     this.destroyEmbed();
     this.stopNative();
+    this.preloader.pinned = null;
+    this.preloader.clear();
     this.set(INITIAL_STATE);
   }
 
@@ -430,10 +451,36 @@ export class PlayerEngine extends EventTarget {
   setAdFree(on) {
     if (on === this.adFree) return;
     this.adFree = on;
+    if (!on) this.preloader.clear(); // the YouTube player can't use downloaded audio
     if (!this.track) return;
     const at = this.currentTime;
     const play = this.switching ? this.wantPlay : this.state.status === 'playing' || this.state.status === 'loading';
     this.load(this.track, { startAt: at, autoplay: play });
+  }
+
+  /** Data saver (Settings) turns preloading off; what's already held for other songs is freed. */
+  setPreload(on) {
+    this.preloadOn = on && preloadSupported();
+    if (!this.preloadOn) this.preloader.keepOnly([this.track?.id]);
+  }
+
+  /**
+   * Downloads the audio of the song that will play next (first in the queue / next autoplay pick),
+   * so it starts instantly. Only one upcoming song is held; asking for another replaces it.
+   */
+  async preloadNext(track) {
+    if (!track || !this.preloadOn || !this.adFree || track.id === this.track?.id) return;
+    if (track.duration > MAX_PRELOAD_SECONDS) return;
+    this.preloader.keepOnly([this.track?.id, track.id]);
+    try {
+      const info = await getVideo(track.id);
+      if (!this.preloadOn || (info.track?.duration || 0) > MAX_PRELOAD_SECONDS) return;
+      // the same pick loadNative will make, so the downloaded file is the one it plays
+      const stream = pickAudio(info.audio, this.video, { preferred: this.preferredLang });
+      if (stream) await this.preloader.fetch(track.id, stream);
+    } catch {
+      /* no server could describe it right now: it will just stream when its turn comes */
+    }
   }
 
   /** Preferred dub language from Settings ('hi', 'es', … or null for the original); applies right away. */

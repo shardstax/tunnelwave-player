@@ -26,6 +26,7 @@
 **Playback**
 - 🎧 **Ad-free audio** streamed through open-source YouTube front-ends ([Piped](https://github.com/TeamPiped/Piped) / [Invidious](https://invidious.io))
 - 🔁 **Fast automatic failover**: servers are raced and the first to answer wins; a song that stalls switches to another server mid-way without losing its place, and dead servers are skipped for a while. If all fail, it falls back to the official YouTube player
+- ⚡ **Instant skips**: like Spotify, the next song's audio downloads in the background (half a minute into the current one), so skipping or moving on starts instantly and plays from memory without stalls. Light on memory: audio only, at most two songs held (~4 MB each), long videos skipped. Turn on **Data saver** in Settings to switch this off
 - 📺 **Ad-free servers can be turned off** in Settings (or with `Alt` + `S`) to always use the regular YouTube player
 - 🔍 **Search** by song or video name, with a *Videos / Songs* filter
 - 🔗 **Paste any YouTube link**: videos, `youtu.be`, Shorts, YouTube Music, and whole **playlists**

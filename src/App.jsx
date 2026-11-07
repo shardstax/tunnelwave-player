@@ -32,6 +32,7 @@ const DEFAULT_SETTINGS = {
   compactPlayer: false, // now-playing card collapsed to a slim strip
   dubLanguage: '', // '' = original audio; otherwise e.g. 'hi' to prefer a Hindi dub when a video has one
   adFree: true, // false: play everything in the regular YouTube player
+  dataSaver: false, // true: don't download the next song ahead of time
   volume: 0.9,
   muted: false,
   customInstance: { type: 'piped', base: '' },
@@ -40,6 +41,8 @@ const DEFAULT_SETTINGS = {
 const RECENT_LIMIT = 50;
 const SEARCH_DEBOUNCE_MS = 400;
 const HISTORY_LIMIT = 100;
+// seconds into a song before the next one is downloaded (skipped earlier = nothing wasted)
+const PRELOAD_AFTER_S = 30;
 const IDLE_SEARCH = { status: 'idle', query: '', filter: 'videos', tracks: [], playlist: null, error: null };
 
 // `fromRadio` marks songs autoplay picked, so skipping them can teach the radio
@@ -618,6 +621,7 @@ export default function App() {
   useEffect(() => engine.setVolume(settings.volume, settings.muted), [engine, settings.volume, settings.muted]);
   useEffect(() => engine.setPreferredLang(settings.dubLanguage || null), [engine, settings.dubLanguage]);
   useEffect(() => engine.setAdFree(settings.adFree), [engine, settings.adFree]);
+  useEffect(() => engine.setPreload(!settings.dataSaver), [engine, settings.dataSaver]);
 
   const recordedRef = useRef(null);
   const onEngineState = useEvent(() => {
@@ -636,14 +640,25 @@ export default function App() {
     };
   }, [engine, onEngineState, onEnded]);
 
-  // warm up the next song's stream so skipping or auto-advancing starts fast
+  // Get the next song ready so skipping or auto-advancing starts fast:
+  // its stream link a few seconds in, and (unless Data saver is on) its whole audio half a minute in,
+  // by which point you've probably decided to keep listening to this one.
   const autoplayOn = settings.autoRadio || !!vibe;
-  const upNextId = queue[0]?.id ?? (autoplayOn ? radioTracks[0]?.id : undefined);
+  const upNext = queue[0] ?? (autoplayOn ? radioTracks[0] : undefined);
+  const upNextId = upNext?.id;
+  const upNextRef = useRef(upNext);
+  upNextRef.current = upNext;
   useEffect(() => {
     if (engineState.status !== 'playing' || !upNextId || !settings.adFree) return;
-    const timer = setTimeout(() => getVideo(upNextId).catch(() => {}), 8000);
-    return () => clearTimeout(timer);
-  }, [engineState.status === 'playing', upNextId]); // eslint-disable-line react-hooks/exhaustive-deps
+    const link = setTimeout(() => getVideo(upNextId).catch(() => {}), 8000);
+    const audio = settings.dataSaver
+      ? null
+      : setTimeout(() => engine.preloadNext(upNextRef.current), Math.max(0, PRELOAD_AFTER_S - engine.currentTime) * 1000);
+    return () => {
+      clearTimeout(link);
+      clearTimeout(audio);
+    };
+  }, [engineState.status === 'playing', upNextId, settings.dataSaver]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     if (engineState.status === 'error' && engineState.error) toast(engineState.error);
