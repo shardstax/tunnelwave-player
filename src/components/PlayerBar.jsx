@@ -18,6 +18,8 @@ import {
 } from 'lucide-react';
 import { useDismiss, useEngineState, useEngineTime } from '../lib/hooks';
 import { formatTime, languageName } from '../lib/format';
+import { burstHearts } from '../lib/hearts';
+import { EffectsMenu, MiniPlayerButton, SleepMenu } from './BarExtras';
 
 function Progress({ engine }) {
   const { time, duration } = useEngineTime(engine);
@@ -120,6 +122,12 @@ export default function PlayerBar({
   onUpdateSettings,
   onShuffle,
   onShowShortcuts,
+  effect,
+  onEffect,
+  sleep,
+  onSleep,
+  miniOpen,
+  onToggleMini,
 }) {
   const state = useEngineState(engine);
   const { shuffle, repeat, volume, muted } = settings;
@@ -140,7 +148,14 @@ export default function PlayerBar({
               <div className="track-title">{track.title}</div>
               <div className="track-author">{track.author}</div>
             </div>
-            <button className={`icon-btn hide-sm ${isFavourite ? 'is-fav' : ''}`} onClick={onToggleFavourite} title="Favourite (F)">
+            <button
+              className={`icon-btn hide-sm ${isFavourite ? 'is-fav' : ''}`}
+              onClick={(e) => {
+                if (!isFavourite) burstHearts(e.currentTarget);
+                onToggleFavourite();
+              }}
+              title="Favourite (F)"
+            >
               <Heart size={18} fill={isFavourite ? 'currentColor' : 'none'} />
             </button>
           </>
@@ -176,6 +191,9 @@ export default function PlayerBar({
 
       <div className="bar-right">
         <LanguageMenu engine={engine} state={state} />
+        <EffectsMenu effect={effect} available={state.mode !== 'embed'} onChange={onEffect} />
+        <SleepMenu sleep={sleep} onSet={onSleep} />
+        <MiniPlayerButton open={miniOpen} onToggle={onToggleMini} disabled={!track} />
         <button
           className="icon-btn hide-sm"
           onClick={onShowShortcuts}

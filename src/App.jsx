@@ -18,6 +18,10 @@ import PlayerBar from './components/PlayerBar';
 import Settings from './components/Settings';
 import ShortcutsPopover from './components/ShortcutsPopover';
 import QuoteCard from './components/QuoteCard';
+import MiniPlayerPortal, { openMiniWindow } from './components/MiniPlayer';
+import { burstHearts } from './lib/hearts';
+import { clearPartyLink, partyLink, readPartyLink } from './lib/party';
+import { effectById } from './lib/effects';
 import { nextQuote } from './lib/quotes';
 import { Favourites, Playlists, Recent, Results } from './components/Browse';
 import Radio from './components/Radio';
@@ -74,6 +78,8 @@ function Logo() {
 
 export default function App() {
   const [engine] = useState(() => new PlayerEngine());
+  // handy for poking at playback from the browser console while developing (not in the live build)
+  if (import.meta.env.DEV) window.__engine = engine;
   const engineState = useEngineState(engine);
 
   // Spotify-style: `current` is playing, `queue` is only what's coming up,
@@ -183,21 +189,6 @@ export default function App() {
   });
 
   const removeFromQueue = useEvent((id) => setQueue(queue.filter((q) => q.uid !== id)));
-
-  /**
-   * Removes the current song and plays the next one in the queue (stops if the queue is empty).
-   * The removed song goes to history, so "previous" can still bring it back.
-   */
-  const removeCurrent = useEvent(() => {
-    if (!current) return;
-    if (queue.length) {
-      setQueue(queue.slice(1));
-      startTrack(queue[0]);
-      return;
-    }
-    setHistory((h) => [...h, toTrack(current)].slice(-HISTORY_LIMIT));
-    setCurrent(null);
-  });
 
   const clearQueue = useEvent(() => {
     setQueue([]);
@@ -603,6 +594,89 @@ export default function App() {
     return () => clearTimeout(timer);
   }, [input]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // ---------- extras: sound effects, sleep timer, mini player, party links ----------
+
+  // Slowed + Reverb / Nightcore / 8D. Per session on purpose: a fresh visit always sounds normal.
+  const [effect, setEffect] = useState('normal');
+  const changeEffect = useEvent((id) => {
+    engine.setEffect(id);
+    setEffect(id);
+    toast(id === 'normal' ? 'Sound: normal' : `Sound: ${effectById(id).name}`);
+  });
+
+  // { mode: 'time', endsAt } | { mode: 'song' } | null
+  const [sleep, setSleep] = useState(null);
+  useEffect(() => {
+    if (sleep?.mode !== 'time') return;
+    const FADE_MS = 10000;
+    const timer = setTimeout(
+      () =>
+        engine.fadeOut(FADE_MS).then(() => {
+          setSleep(null);
+          toast('Sleep timer: goodnight 🌙');
+        }),
+      Math.max(0, sleep.endsAt - Date.now() - FADE_MS),
+    );
+    return () => {
+      clearTimeout(timer);
+      engine.cancelFade();
+    };
+  }, [sleep, engine, toast]);
+  const changeSleep = useEvent((value) => {
+    setSleep(value);
+    if (!value) toast('Sleep timer off');
+    else if (value.mode === 'song') toast('Music will stop after this song');
+    else toast(`Music will stop in ${Math.round((value.endsAt - Date.now()) / 60000)} minutes`);
+  });
+
+  // floating mini player (Chrome / Edge)
+  const [miniWin, setMiniWin] = useState(null);
+  const toggleMini = useEvent(async () => {
+    if (miniWin) {
+      miniWin.close();
+      return;
+    }
+    try {
+      const win = await openMiniWindow();
+      if (!win) return;
+      win.addEventListener('pagehide', () => setMiniWin(null));
+      setMiniWin(win);
+    } catch {
+      toast('Couldn’t open the mini player');
+    }
+  });
+
+  // party links: share your lineup, or open one a friend sent
+  const shareQueue = useEvent(async () => {
+    const tracks = current ? [current, ...queue] : queue;
+    if (!tracks.length) return toast('Play or queue some songs first');
+    const url = await partyLink(tracks);
+    const text = `🎉 ${tracks.length} ${tracks.length === 1 ? 'song' : 'songs'} for you on Tunnelwave`;
+    // phones: the system share sheet (WhatsApp etc.); computers: copy the link
+    if (navigator.share && window.matchMedia('(pointer: coarse)').matches) {
+      navigator.share({ title: 'Tunnelwave party queue', text, url }).catch(() => {});
+      return;
+    }
+    try {
+      await navigator.clipboard.writeText(url);
+      toast('Party link copied, send it to your friends 🎉');
+    } catch {
+      window.prompt('Copy this party link:', url);
+    }
+  });
+
+  const [partyInvite, setPartyInvite] = useState(null);
+  useEffect(() => {
+    const check = () =>
+      readPartyLink().then((tracks) => {
+        clearPartyLink();
+        if (tracks) setPartyInvite(tracks);
+      });
+    check();
+    window.addEventListener('hashchange', check);
+    return () => window.removeEventListener('hashchange', check);
+  }, []);
+
   // ---------- player wiring ----------
 
   const autoplayRef = useRef(false);
@@ -629,7 +703,15 @@ export default function App() {
     recordedRef.current = current.uid;
     setRecent((r) => [toTrack(current), ...r.filter((x) => x.id !== current.id)].slice(0, RECENT_LIMIT));
   });
-  const onEnded = useEvent(() => next(true));
+  const onEnded = useEvent(() => {
+    // sleep timer set to "end of song": stop here instead of moving on
+    if (sleep?.mode === 'song') {
+      setSleep(null);
+      toast('Sleep timer: goodnight 🌙');
+      return;
+    }
+    next(true);
+  });
 
   useEffect(() => {
     engine.addEventListener('state', onEngineState);
@@ -771,7 +853,11 @@ export default function App() {
       arrowright: () => engine.seek(engine.currentTime + settings.seekStep),
       arrowleft: () => engine.seek(engine.currentTime - settings.seekStep),
       '/': () => searchRef.current?.focus(),
-      f: () => current && toggleFavourite(current),
+      f: () => {
+        if (!current) return;
+        if (!favouriteIds.has(current.id)) burstHearts(document.querySelector('.hero-actions .icon-btn[title^="Favourite"]'));
+        toggleFavourite(current);
+      },
       s: () => toggleShuffle(),
       r: () => updateSettings({ repeat: { off: 'all', all: 'one', one: 'off' }[settings.repeat] }),
       m: () => updateSettings({ muted: !settings.muted }),
@@ -879,11 +965,10 @@ export default function App() {
     <Queue
       queue={queue}
       current={current}
-      isPlaying={engineState.status === 'playing'}
       onPlay={playFromQueue}
       onMove={moveInQueue}
       onRemove={removeFromQueue}
-      onRemoveCurrent={removeCurrent}
+      onShareQueue={shareQueue}
       onClear={clearQueue}
       onSaveAsPlaylist={saveQueueAsPlaylist}
       autoplay={autoplayOn ? radioTracks.slice(0, 5) : []}
@@ -1012,10 +1097,74 @@ export default function App() {
           onShuffle={toggleShuffle}
           onUpdateSettings={updateSettings}
           onShowShortcuts={() => setShortcutsOpen((o) => !o)}
+          effect={effect}
+          onEffect={changeEffect}
+          sleep={sleep}
+          onSleep={changeSleep}
+          miniOpen={!!miniWin}
+          onToggleMini={toggleMini}
         />
 
         {shortcutsOpen && <ShortcutsPopover steps={settings} onClose={() => setShortcutsOpen(false)} />}
         {quote && <QuoteCard quote={quote} onClose={() => setQuote(null)} />}
+
+        {miniWin && (
+          <MiniPlayerPortal
+            win={miniWin}
+            engine={engine}
+            track={current}
+            isFavourite={!!current && favouriteIds.has(current.id)}
+            onToggleFavourite={() => current && toggleFavourite(current)}
+            onPrev={prev}
+            onNext={() => next()}
+          />
+        )}
+
+        {partyInvite && (
+          <div className="party-invite" role="dialog" aria-label="Shared party queue">
+            <div className="party-card">
+              <div className="party-head">
+                <span className="party-emoji" aria-hidden="true">
+                  🎉
+                </span>
+                <div>
+                  <h3>Someone shared a party queue</h3>
+                  <p className="muted small">
+                    {partyInvite.length} {partyInvite.length === 1 ? 'song' : 'songs'} · starts with “{partyInvite[0].title}”
+                  </p>
+                </div>
+              </div>
+              <div className="party-thumbs" aria-hidden="true">
+                {partyInvite.slice(0, 4).map((t) => (
+                  <img key={t.id} src={thumbnail(t.id, 'mqdefault')} alt="" />
+                ))}
+              </div>
+              <div className="party-actions">
+                <button
+                  className="btn btn-accent btn-sm"
+                  onClick={() => {
+                    replaceQueue(partyInvite);
+                    setPartyInvite(null);
+                  }}
+                >
+                  Play it now
+                </button>
+                <button
+                  className="btn btn-soft btn-sm"
+                  onClick={() => {
+                    addToQueue(partyInvite);
+                    setPartyInvite(null);
+                  }}
+                >
+                  Add to my queue
+                </button>
+                <button className="btn btn-ghost btn-sm" onClick={() => setPartyInvite(null)}>
+                  No thanks
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         <div className="toasts" aria-live="polite">
           {toasts.map((t) => (

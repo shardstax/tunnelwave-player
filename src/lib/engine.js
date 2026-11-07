@@ -2,6 +2,7 @@
 // if every stream source fails it falls back to the official YouTube embed.
 import { getVideo, markDead } from './api';
 import { AudioPreloader, MAX_PRELOAD_SECONDS, preloadSupported } from './preload';
+import { SoundFx, effectById, needsGraph } from './effects';
 
 const MAX_STREAM_ATTEMPTS = 4;
 // A server whose audio hasn't started by now is treated as stuck, and we move on to the next one.
@@ -100,6 +101,10 @@ export class PlayerEngine extends EventTarget {
     this.preloader = new AudioPreloader();
     this.preloadOn = preloadSupported();
     this.fromMemory = false; // the current song is playing from a preloaded copy
+    // sound effects (Slowed + Reverb, Nightcore, 8D); the audio graph is built on first use
+    this.effect = effectById('normal');
+    this.fx = null;
+    this.fadeLevel = 1; // sleep timer fade-out
 
     this.embedEl = document.createElement('div');
     this.embedEl.className = 'embed-host';
@@ -230,8 +235,8 @@ export class PlayerEngine extends EventTarget {
     this.fromMemory = !!memoryUrl;
     v.src = memoryUrl || stream.url;
     this.startExtended = false;
-    v.volume = this.volume;
-    v.muted = this.muted;
+    this.applyVolume();
+    this.applyRate();
     if (startAt > 0) v.addEventListener('loadedmetadata', () => (v.currentTime = startAt), { once: true });
 
     if (!autoplay) {
@@ -415,6 +420,7 @@ export class PlayerEngine extends EventTarget {
 
   play() {
     this.wantPlay = true;
+    this.fx?.resume();
     if (this.state.mode === 'embed') this.yt?.playVideo?.();
     else if (this.video.getAttribute('src')) {
       if (this.video.readyState < 3) this.armWatchdog(START_TIMEOUT_MS);
@@ -519,12 +525,108 @@ export class PlayerEngine extends EventTarget {
   setVolume(volume, muted) {
     this.volume = volume;
     this.muted = muted;
-    this.video.volume = volume;
-    this.video.muted = muted;
+    this.applyVolume();
+  }
+
+  applyVolume() {
+    const volume = this.volume * this.fadeLevel;
+    const v = this.video;
+    if (this.fx) {
+      // with effects on, the element feeds the audio graph at full level and the graph sets the volume
+      v.volume = 1;
+      v.muted = false;
+      this.fx.setVolume(volume, this.muted);
+    } else {
+      v.volume = volume;
+      v.muted = this.muted;
+    }
     if (this.yt?.setVolume) {
       this.yt.setVolume(Math.round(volume * 100));
-      if (muted) this.yt.mute();
+      if (this.muted) this.yt.mute();
       else this.yt.unMute();
+    }
+  }
+
+  // ---------- sound effects ----------
+
+  /** Speed (and with it the pitch) for the current effect; a new song resets it, so this runs per load. */
+  applyRate() {
+    const v = this.video;
+    const rate = this.effect.rate || 1;
+    // changing speed should change pitch too ("slowed" songs sound deeper), like a record
+    v.preservesPitch = rate === 1;
+    v.mozPreservesPitch = rate === 1;
+    v.webkitPreservesPitch = rate === 1;
+    v.defaultPlaybackRate = rate;
+    v.playbackRate = rate;
+  }
+
+  /** Only the ad-free player can process audio; the YouTube player plays as-is. */
+  get effectsAvailable() {
+    return this.state.mode !== 'embed';
+  }
+
+  /** 'normal' | 'slowed' | 'nightcore' | '8d'. Applies to the song that's playing and every song after it. */
+  setEffect(id) {
+    this.effect = effectById(id);
+    if (needsGraph(this.effect) && !this.fx) this.enableGraph();
+    this.fx?.resume();
+    this.fx?.apply(this.effect);
+    if (this.state.mode === 'native') this.applyRate();
+    this.emit('state');
+  }
+
+  enableGraph() {
+    const v = this.video;
+    // Web Audio may only read audio the server allows other sites to read (CORS). Streams loaded
+    // in this mode ask for that; any server that refuses fails like a broken server and is skipped.
+    v.crossOrigin = 'anonymous';
+    try {
+      this.fx = new SoundFx(v);
+    } catch {
+      this.fx = null;
+      return;
+    }
+    this.applyVolume();
+    // the song that's playing was loaded without asking, so load it again at the same spot
+    const src = v.getAttribute('src');
+    if (this.state.mode === 'native' && src && !src.startsWith('blob:') && this.track) {
+      const at = v.currentTime || 0;
+      this.wantPlay = this.switching ? this.wantPlay : !v.paused;
+      this.switching = true;
+      this.set({ status: 'loading' });
+      v.removeAttribute('src');
+      this.loadNative(this.token, at, this.wantPlay);
+    }
+  }
+
+  // ---------- sleep timer ----------
+
+  /** Lowers the volume over `ms`, then pauses and puts the volume back for next time. */
+  fadeOut(ms = 8000) {
+    clearInterval(this.fadeTimer);
+    const started = performance.now();
+    return new Promise((resolve) => {
+      this.fadeTimer = setInterval(() => {
+        const p = Math.min(1, (performance.now() - started) / ms);
+        this.fadeLevel = 1 - p;
+        this.applyVolume();
+        if (p < 1) return;
+        clearInterval(this.fadeTimer);
+        this.pause();
+        this.fadeLevel = 1;
+        // restore once the pause has taken effect, so there's no blip of sound
+        setTimeout(() => this.applyVolume(), 300);
+        resolve();
+      }, 100);
+    });
+  }
+
+  cancelFade() {
+    clearInterval(this.fadeTimer);
+    if (this.fadeLevel !== 1) {
+      this.fadeLevel = 1;
+      this.applyVolume();
     }
   }
 }

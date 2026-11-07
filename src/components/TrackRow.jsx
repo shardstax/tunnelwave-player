@@ -3,6 +3,7 @@ import { Heart, ListEnd, ListPlus, Play, Plus, X } from 'lucide-react';
 import { useActions } from '../actions';
 import { useDismiss } from '../lib/hooks';
 import { formatTime } from '../lib/format';
+import { burstHearts } from '../lib/hearts';
 
 export function Thumb({ track, onPlay, size = 'md' }) {
   return (
@@ -73,7 +74,10 @@ function TrackRow({ track, onRemove, removeLabel = 'Remove' }) {
         <div className="track-author">{track.author}</div>
       </div>
       <div className="track-actions">
-        <button className={`icon-btn ${fav ? 'is-fav' : ''}`} onClick={() => toggleFavourite(track)} title={fav ? 'Remove from favourites' : 'Add to favourites'}>
+        <button className={`icon-btn ${fav ? 'is-fav' : ''}`} onClick={(e) => {
+            if (!fav) burstHearts(e.currentTarget);
+            toggleFavourite(track);
+          }} title={fav ? 'Remove from favourites' : 'Add to favourites'}>
           <Heart size={17} fill={fav ? 'currentColor' : 'none'} />
         </button>
         <button className="icon-btn hide-sm" onClick={() => addToQueue([track], { next: true })} title="Play next">

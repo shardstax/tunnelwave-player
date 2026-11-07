@@ -3,19 +3,9 @@ import { DndContext, KeyboardSensor, PointerSensor, closestCenter, useSensor, us
 import { restrictToParentElement, restrictToVerticalAxis } from '@dnd-kit/modifiers';
 import { SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronDown, ChevronUp, GripVertical, ListMusic, Plus, Save, Shuffle, Sparkles, Trash2, X } from 'lucide-react';
+import { ChevronDown, ChevronUp, GripVertical, ListMusic, PartyPopper, Plus, Save, Shuffle, Sparkles, Trash2, X } from 'lucide-react';
 import { useActions } from '../actions';
 import { formatTime, formatTotal } from '../lib/format';
-
-function Equalizer({ paused }) {
-  return (
-    <span className={`eq ${paused ? 'is-paused' : ''}`} aria-hidden="true">
-      <i />
-      <i />
-      <i />
-    </span>
-  );
-}
 
 const QueueItem = memo(function QueueItem({ item, index, count, onPlay, onMove, onRemove }) {
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, transform, transition, isDragging } = useSortable({
@@ -104,7 +94,7 @@ function Autoplay({ tracks, vibe, onPlay, onReshuffle }) {
   );
 }
 
-function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCurrent, onClear, onSaveAsPlaylist, autoplay = [], autoplayVibe, onPlayAutoplay, onReshuffleAutoplay }) {
+function Queue({ queue, current, onPlay, onMove, onRemove, onClear, onShareQueue, onSaveAsPlaylist, autoplay = [], autoplayVibe, onPlayAutoplay, onReshuffleAutoplay }) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const sensors = useSensors(
@@ -131,25 +121,6 @@ function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCu
 
   return (
     <section className="panel queue">
-      {current && (
-        <div className="now-card">
-          <p className="label">Now playing</p>
-          <div className="qitem is-current">
-            <span className="qitem-index">
-              <Equalizer paused={!isPlaying} />
-            </span>
-            <img src={current.thumbnail} alt="" />
-            <span className="track-text">
-              <span className="track-title">{current.title}</span>
-              <span className="track-author">{current.author}</span>
-            </span>
-            <button className="icon-btn" onClick={onRemoveCurrent} title="Remove and play next">
-              <X size={16} />
-            </button>
-          </div>
-        </div>
-      )}
-
       <header className="panel-head">
         <div>
           <h2>Next up</h2>
@@ -160,6 +131,9 @@ function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCu
         </div>
         {(queue.length > 0 || current) && (
           <div className="row gap-xs">
+            <button className="icon-btn" onClick={onShareQueue} title="Share as a party link: friends get this exact lineup">
+              <PartyPopper size={17} />
+            </button>
             <button className="icon-btn" onClick={() => setSaving((s) => !s)} title="Save as playlist">
               <Save size={17} />
             </button>

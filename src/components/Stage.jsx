@@ -3,6 +3,7 @@ import { ChevronDown, ChevronUp, ChevronsRight, Heart, Loader2, Maximize, MicVoc
 import { useEngineState, useEngineTime, useLocalStorage } from '../lib/hooks';
 import { getSkipSegments, skipLabel } from '../lib/skips';
 import { thumbnail } from '../lib/youtube';
+import { burstHearts } from '../lib/hearts';
 
 function SourceBadge({ state }) {
   if (!state.source) return null;
@@ -146,7 +147,12 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite, o
           </div>
           <div className="hero-actions">
             <SkipButton engine={engine} track={track} onNext={onNext} />
-            <button className={`icon-btn ${isFavourite ? 'is-fav' : ''}`} onClick={onToggleFavourite} title="Favourite (F)">
+            <button className={`icon-btn ${isFavourite ? 'is-fav' : ''}`} onClick={(e) => {
+                if (!isFavourite) burstHearts(e.currentTarget);
+                onToggleFavourite();
+              }}
+              title="Favourite (F)"
+            >
               <Heart size={19} fill={isFavourite ? 'currentColor' : 'none'} />
             </button>
             <button
