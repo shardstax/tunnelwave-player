@@ -334,15 +334,18 @@ async function fetchVideo(id, exclude) {
   return data;
 }
 
-/** Loads a YouTube playlist (first ~500 items). */
-export async function getPlaylist(listId) {
+/**
+ * Loads a YouTube playlist (first ~500 items). `pages` limits how many extra pages are fetched;
+ * `side: true` is for background loads (vibe stations) that shouldn't affect server choice.
+ */
+export async function getPlaylist(listId, { pages = 5, side = false } = {}) {
   const id = encodeURIComponent(listId);
   return request({
     piped: async (base) => {
       const d = await getJSON(`${base}/playlists/${id}`);
       const items = [...(d.relatedStreams || [])];
       let next = d.nextpage;
-      for (let page = 0; next && page < 5; page++) {
+      for (let page = 0; next && page < pages; page++) {
         const more = await getJSON(`${base}/nextpage/playlists/${id}?nextpage=${encodeURIComponent(next)}`);
         items.push(...(more.relatedStreams || []));
         next = more.nextpage;
@@ -358,7 +361,56 @@ export async function getPlaylist(listId) {
       if (!tracks.length) throw new Error('Playlist came back empty');
       return { title: d.title || 'YouTube playlist', tracks };
     },
+  }, new Set(), side ? { remember: false } : undefined);
+}
+
+const playlistSearchCache = new Map();
+
+/**
+ * Finds YouTube playlists for a phrase like "hindi gym songs".
+ * Resolves to [{ id, name, author, official }]; `official` = curated by YouTube Music itself.
+ */
+export function searchPlaylists(query) {
+  const key = query.trim().toLowerCase();
+  const cached = playlistSearchCache.get(key);
+  if (cached && Date.now() - cached.at < RADIO_CACHE_MS) return cached.promise;
+  const q = encodeURIComponent(query);
+  const promise = request(
+    {
+      piped: async (base) => {
+        const lists = [];
+        // YouTube Music playlists first (song-focused), then regular ones
+        for (const filter of ['music_playlists', 'playlists']) {
+          const d = await getJSON(`${base}/search?q=${q}&filter=${filter}`).catch(() => null);
+          for (const i of d?.items || []) {
+            const id = new URLSearchParams((i.url || '').split('?')[1]).get('list');
+            if (i.type === 'playlist' && id) lists.push({ id, name: i.name, author: i.uploaderName || '' });
+          }
+          if (lists.length >= 6) break;
+        }
+        if (!lists.length) throw new Error('No playlists found');
+        return { lists };
+      },
+      invidious: async (base) => {
+        const d = await getJSON(`${base}/api/v1/search?q=${q}&type=playlist`);
+        const lists = (Array.isArray(d) ? d : [])
+          .filter((p) => p.type === 'playlist' && p.playlistId)
+          .map((p) => ({ id: p.playlistId, name: p.title, author: p.author || '' }));
+        if (!lists.length) throw new Error('No playlists found');
+        return { lists };
+      },
+    },
+    new Set(),
+    { prefer: 'piped', remember: false },
+  ).then(({ lists }) => {
+    const seen = new Set();
+    return lists
+      .filter((l) => !seen.has(l.id) && seen.add(l.id))
+      .map((l) => ({ ...l, official: l.id.startsWith('RDCLAK') || /^youtube music$/i.test(l.author) }));
   });
+  playlistSearchCache.set(key, { at: Date.now(), promise });
+  promise.catch(() => playlistSearchCache.delete(key));
+  return promise;
 }
 
 const radioCache = new Map();

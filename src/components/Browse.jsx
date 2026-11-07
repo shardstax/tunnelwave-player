@@ -1,10 +1,10 @@
 import { useState } from 'react';
-import { ArrowLeft, Clock, Heart, ListMusic, ListPlus, Pencil, Play, Plus, Search, Shuffle, Sparkles, Trash2, TriangleAlert } from 'lucide-react';
+import { ArrowLeft, Clock, Heart, ListMusic, ListPlus, Pencil, Play, Plus, Search, Shuffle, Trash2, TriangleAlert } from 'lucide-react';
 import TrackRow from './TrackRow';
 import { useActions } from '../actions';
 import { formatTotal } from '../lib/format';
 
-function Empty({ icon: Icon, title, children }) {
+export function Empty({ icon: Icon, title, children }) {
   return (
     <div className="empty">
       <Icon size={32} />
@@ -14,7 +14,7 @@ function Empty({ icon: Icon, title, children }) {
   );
 }
 
-function Skeleton() {
+export function Skeleton() {
   return (
     <ul className="tracks">
       {Array.from({ length: 6 }, (_, i) => (
@@ -30,7 +30,7 @@ function Skeleton() {
   );
 }
 
-function TrackList({ tracks, onRemove, removeLabel }) {
+export function TrackList({ tracks, onRemove, removeLabel }) {
   return (
     <ul className="tracks">
       {tracks.map((t, i) => (
@@ -41,7 +41,7 @@ function TrackList({ tracks, onRemove, removeLabel }) {
 }
 
 /** Buttons shown above any group of songs: play all / add all / save. */
-function BulkBar({ tracks, saveName, onReshuffle }) {
+export function BulkBar({ tracks, saveName, onReshuffle }) {
   const { addToQueue, replaceQueue, createPlaylist, toast } = useActions();
   if (!tracks.length) return null;
   return (
@@ -140,43 +140,6 @@ export function Results({ search, onFilter, onRetry, onOpenSettings }) {
         </div>
       ) : (
         <Empty icon={Search} title="No results" />
-      )}
-    </>
-  );
-}
-
-export function Suggestions({ tracks, loading, basedOn, autoRadio, onToggleAutoRadio, onReshuffle, hasTrack }) {
-  return (
-    <>
-      <div className="list-head">
-        <p className="muted small radio-basis">
-          {basedOn ? (
-            <>
-              Your radio, based on <strong>{basedOn.title}</strong> and what you played before it
-            </>
-          ) : (
-            'Your radio follows what you play'
-          )}
-        </p>
-        <label className="switch">
-          <input type="checkbox" checked={autoRadio} onChange={onToggleAutoRadio} />
-          <span className="switch-track" />
-          Autoplay when the queue ends
-        </label>
-      </div>
-      {loading && !tracks.length ? (
-        <Skeleton />
-      ) : tracks.length ? (
-        <>
-          <BulkBar tracks={tracks} onReshuffle={onReshuffle} />
-          <TrackList tracks={tracks} />
-        </>
-      ) : (
-        <Empty icon={Sparkles} title={hasTrack ? 'No radio for this song yet' : 'Play something first'}>
-          {hasTrack
-            ? 'The radio servers didn’t answer. Try another song, or skip ahead and it will try again.'
-            : 'Play any song and a radio of similar music appears here. Skip what you don’t like and it learns.'}
-        </Empty>
       )}
     </>
   );

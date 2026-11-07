@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { arrayMove } from '@dnd-kit/sortable';
-import { Clock, Heart, ListMusic, Library, Search, Settings as SettingsIcon, Sparkles, X } from 'lucide-react';
+import { Clock, Heart, ListMusic, Library, RadioTower, Search, Settings as SettingsIcon, X } from 'lucide-react';
 import { ActionsContext } from './actions';
 import { getPlaylist, getRadio, getVideo, search as searchApi, setCustomInstance } from './lib/api';
 import { EMPTY_TASTE, buildStation, nudgeTaste, reshuffleStation, songKey } from './lib/radio';
+import { buildVibe } from './lib/vibes';
 import { extractAccent } from './lib/color';
 import { PlayerEngine } from './lib/engine';
 import { shuffled, uid } from './lib/format';
@@ -18,7 +19,8 @@ import Settings from './components/Settings';
 import ShortcutsPopover from './components/ShortcutsPopover';
 import QuoteCard from './components/QuoteCard';
 import { nextQuote } from './lib/quotes';
-import { Favourites, Playlists, Recent, Results, Suggestions } from './components/Browse';
+import { Favourites, Playlists, Recent, Results } from './components/Browse';
+import Radio from './components/Radio';
 
 const DEFAULT_SETTINGS = {
   theme: 'system',
@@ -80,6 +82,8 @@ export default function App() {
   const [playlists, setPlaylists] = useLocalStorage('tq.playlists', []);
   const [recent, setRecent] = useLocalStorage('tq.recent', []);
   const [taste, setTaste] = useLocalStorage('tq.taste', EMPTY_TASTE);
+  // the running vibe station, if any: { id, name, query, icon, hue, tracks, round }
+  const [vibe, setVibe] = useLocalStorage('tq.vibe', null);
   const [rawSettings, setRawSettings] = useLocalStorage('tq.settings', {});
   const settings = useMemo(() => ({ ...DEFAULT_SETTINGS, ...rawSettings }), [rawSettings]);
   setCustomInstance(settings.customInstance);
@@ -139,10 +143,22 @@ export default function App() {
     }
   });
 
-  const playNow = useEvent((track) => startTrack(track));
+  // Like Spotify: playing something from outside a vibe station switches the station off.
+  // Songs from the station itself (or added to the queue) keep it going.
+  const leaveVibeFor = (tracks) => {
+    if (!vibe || tracks.every((t) => vibe.tracks.some((v) => v.id === t.id))) return;
+    setVibe(null);
+    toast(`${vibe.name} station stopped`);
+  };
+
+  const playNow = useEvent((track) => {
+    leaveVibeFor([track]);
+    startTrack(track);
+  });
 
   /** "Play all": plays the first song and replaces the queue with the rest. */
   const replaceQueue = useEvent((tracks) => {
+    leaveVibeFor(tracks);
     let items = tracks.map(withUid);
     if (!items.length) return;
     if (settings.shuffle) items = shuffled(items);
@@ -279,9 +295,72 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [current?.id, engineState.related]);
 
+  // ---------- vibe stations ----------
+
+  const [vibeLoading, setVibeLoading] = useState(null); // id of the vibe being built
+  const vibeSeq = useRef(0);
+  const vibeAvoid = () => [...(current ? [current] : []), ...queue, ...history.slice(-50), ...recent.slice(0, 30)];
+
+  const startVibe = useEvent(async (v) => {
+    const seq = ++vibeSeq.current;
+    setVibeLoading(v.id);
+    try {
+      const tracks = await buildVibe(v, { avoid: vibeAvoid(), taste, favouriteIds });
+      if (seq !== vibeSeq.current) return;
+      const [first, ...rest] = tracks;
+      const { id, name, query, icon, hue, custom } = v;
+      setVibe({ id, name, query, icon, hue, custom, tracks: rest, round: 0 });
+      startTrack({ ...first, fromRadio: true });
+      toast(`Playing ${name} station`);
+    } catch {
+      if (seq === vibeSeq.current) toast(`Couldn’t find songs for “${v.name}”. Try again or another vibe.`);
+    } finally {
+      if (seq === vibeSeq.current) setVibeLoading(null);
+    }
+  });
+
+  const stopVibe = useEvent(() => {
+    vibeSeq.current++;
+    setVibeLoading(null);
+    if (vibe) toast(`${vibe.name} station stopped`);
+    setVibe(null);
+  });
+
+  // a song from the station (picked by autoplay or by you) leaves the upcoming list
+  useEffect(() => {
+    if (vibe && current && vibe.tracks.some((t) => t.id === current.id)) {
+      setVibe((v) => v && { ...v, tracks: v.tracks.filter((t) => t.id !== current.id) });
+    }
+  }, [current?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // running low: the next few playlists for this vibe top it up
+  const toppingUp = useRef(false);
+  useEffect(() => {
+    if (!vibe || vibe.tracks.length >= STATION_TOP_UP_AT || toppingUp.current) return;
+    toppingUp.current = true;
+    const { id, round } = vibe;
+    buildVibe(vibe, { round: round + 1, avoid: [...vibeAvoid(), ...vibe.tracks], taste, favouriteIds })
+      .then((fresh) => {
+        setVibe((v) => {
+          if (!v || v.id !== id) return v;
+          const keys = v.tracks.map(songKey);
+          return { ...v, round: round + 1, tracks: [...v.tracks, ...fresh.filter((t) => !keys.includes(songKey(t)))] };
+        });
+      })
+      .catch(() => setVibe((v) => (v && v.id === id ? { ...v, round: round + 1 } : v)))
+      .finally(() => {
+        toppingUp.current = false;
+      });
+  }, [vibe?.id, vibe?.tracks.length]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // "Show different picks": the songs on screen move to the back and a fresh similar set comes up
   const passedRef = useRef({ forId: null, ids: new Set() });
   const reshuffleRadio = useEvent(() => {
+    if (vibe) {
+      const shown = new Set(radioTracks.slice(0, 5).map((t) => t.id));
+      setVibe((v) => v && { ...v, tracks: reshuffleStation(v.tracks, shown, current) });
+      return;
+    }
     if (!current || station.forId !== current.id || !station.tracks.length) return;
     const prev = passedRef.current.forId === current.id ? passedRef.current.ids : new Set();
     let ids = new Set([...prev, ...radioTracks.slice(0, 5).map((t) => t.id)]);
@@ -292,13 +371,16 @@ export default function App() {
   });
 
   // what autoplay will actually play, minus anything you've queued since
+  // (a running vibe station takes over from the "similar songs" radio)
   const radioTracks = useMemo(() => {
+    const taken = new Set([current?.id, ...queue.map((q) => q.id)]);
+    if (vibe) return vibe.tracks.filter((t) => !taken.has(t.id));
     if (!current || station.forId !== current.id) return [];
-    const taken = new Set([current.id, ...queue.map((q) => q.id)]);
     return station.tracks.filter((t) => !taken.has(t.id));
-  }, [station, queue, current]);
+  }, [station, queue, current, vibe]);
 
   const pickRadioTrack = async () => {
+    if (vibe && radioTracks.length) return radioTracks[0];
     const forId = current?.id;
     let list = station.forId === forId && station.status === 'done' ? station.tracks : null;
     if (!list && stationRef.current.forId === forId) list = await stationRef.current.promise;
@@ -355,7 +437,7 @@ export default function App() {
       startTrack(upcoming[0]);
       return;
     }
-    if (!settings.autoRadio || !current) {
+    if ((!settings.autoRadio && !vibe) || !current) {
       if (!auto) toast('You’ve reached the end of the queue');
       return;
     }
@@ -555,7 +637,8 @@ export default function App() {
   }, [engine, onEngineState, onEnded]);
 
   // warm up the next song's stream so skipping or auto-advancing starts fast
-  const upNextId = queue[0]?.id ?? (settings.autoRadio ? radioTracks[0]?.id : undefined);
+  const autoplayOn = settings.autoRadio || !!vibe;
+  const upNextId = queue[0]?.id ?? (autoplayOn ? radioTracks[0]?.id : undefined);
   useEffect(() => {
     if (engineState.status !== 'playing' || !upNextId || !settings.adFree) return;
     const timer = setTimeout(() => getVideo(upNextId).catch(() => {}), 8000);
@@ -770,7 +853,7 @@ export default function App() {
   const tabs = [
     !isWide && { key: 'queue', label: 'Queue', icon: ListMusic, count: queue.length },
     { key: 'results', label: 'Search', icon: Search },
-    { key: 'suggested', label: 'Radio', icon: Sparkles, count: radioTracks.length },
+    { key: 'suggested', label: 'Stations', icon: RadioTower, count: radioTracks.length },
     { key: 'favourites', label: 'Favourites', icon: Heart, count: favourites.length },
     { key: 'playlists', label: 'Playlists', icon: Library, count: playlists.length },
     { key: 'recent', label: 'Recent', icon: Clock },
@@ -788,7 +871,8 @@ export default function App() {
       onRemoveCurrent={removeCurrent}
       onClear={clearQueue}
       onSaveAsPlaylist={saveQueueAsPlaylist}
-      autoplay={settings.autoRadio ? radioTracks.slice(0, 5) : []}
+      autoplay={autoplayOn ? radioTracks.slice(0, 5) : []}
+      autoplayVibe={vibe?.name}
       onPlayAutoplay={playNow}
       onReshuffleAutoplay={reshuffleRadio}
     />
@@ -877,9 +961,13 @@ export default function App() {
                   />
                 )}
                 {activeTab === 'suggested' && (
-                  <Suggestions
+                  <Radio
+                    vibe={vibe}
+                    vibeLoading={vibeLoading}
+                    onStartVibe={startVibe}
+                    onStopVibe={stopVibe}
                     tracks={radioTracks}
-                    loading={!!current && station.status === 'loading'}
+                    loading={!vibe && !!current && station.status === 'loading'}
                     basedOn={current}
                     hasTrack={!!current}
                     autoRadio={settings.autoRadio}

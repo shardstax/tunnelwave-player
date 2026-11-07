@@ -55,7 +55,7 @@ const QueueItem = memo(function QueueItem({ item, index, count, onPlay, onMove, 
 });
 
 /** Spotify-style preview of what autoplay will pick once the queue runs out. */
-function Autoplay({ tracks, onPlay, onReshuffle }) {
+function Autoplay({ tracks, vibe, onPlay, onReshuffle }) {
   const { addToQueue } = useActions();
   const [spin, setSpin] = useState(0);
   return (
@@ -63,9 +63,9 @@ function Autoplay({ tracks, onPlay, onReshuffle }) {
       <div className="autoplay-head">
         <div>
           <h3>
-            <Sparkles size={15} /> Autoplay
+            <Sparkles size={15} /> {vibe ? `${vibe} station` : 'Autoplay'}
           </h3>
-          <p className="muted small">Similar music keeps playing after your queue</p>
+          <p className="muted small">{vibe ? 'Keeps playing after your queue' : 'Similar music keeps playing after your queue'}</p>
         </div>
         <button
           className="icon-btn"
@@ -104,7 +104,7 @@ function Autoplay({ tracks, onPlay, onReshuffle }) {
   );
 }
 
-function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCurrent, onClear, onSaveAsPlaylist, autoplay = [], onPlayAutoplay, onReshuffleAutoplay }) {
+function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCurrent, onClear, onSaveAsPlaylist, autoplay = [], autoplayVibe, onPlayAutoplay, onReshuffleAutoplay }) {
   const [saving, setSaving] = useState(false);
   const [name, setName] = useState('');
   const sensors = useSensors(
@@ -201,7 +201,7 @@ function Queue({ queue, current, isPlaying, onPlay, onMove, onRemove, onRemoveCu
             </SortableContext>
           </DndContext>
         )}
-        {autoplay.length > 0 && <Autoplay tracks={autoplay} onPlay={onPlayAutoplay} onReshuffle={onReshuffleAutoplay} />}
+        {autoplay.length > 0 && <Autoplay tracks={autoplay} vibe={autoplayVibe} onPlay={onPlayAutoplay} onReshuffle={onReshuffleAutoplay} />}
       </div>
     </section>
   );
