@@ -44,7 +44,7 @@
 - ⏭ **Play next**, play now, remove, clear, and save the queue as a playlist
 - 🔀 **Shuffle** and 🔂 **repeat** (all / one)
 - ✨ **Smart autoplay radio**: when the queue ends, similar music keeps playing, built from YouTube's own radio mix of what you've been playing. It skips compilations and duplicate versions and learns from the songs you skip, finish and favourite
-- 📻 **Vibe stations**: one tap for a never-ending station like *Gym*, *Gym Hindi*, *Work Focus*, *Lofi*, *Punjabi Hits*, *Haryanvi Hits* or *90s Bollywood*, or type any vibe ("Hindi rap", "Arijit sad songs"). Built by blending several matching YouTube playlists, with the same clean-up and learning as autoplay
+- 📻 **Vibe stations**: one tap for a never-ending station like *Trending Hindi*, *Gym*, *Work Focus*, *Lofi*, *Unplugged*, *Hindi Indie*, *Sufi* or *Old is Gold*, or type any vibe ("Hindi rap", "Arijit sad songs"). Built by blending several matching YouTube playlists, with the same clean-up and learning as autoplay
 
 **Library**
 - ❤️ **Favourites**

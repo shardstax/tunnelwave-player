@@ -5,24 +5,53 @@ import {
   CloudRain,
   Coffee,
   Disc3,
-  Drum,
   Dumbbell,
+  Feather,
   Flame,
+  Gem,
+  Guitar,
   HeartHandshake,
   LoaderCircle,
+  Mic2,
+  Music2,
   PartyPopper,
   Radio as RadioIcon,
   Shuffle,
+  Sparkle,
   Sparkles,
   Square,
+  Star,
   Sun,
+  TrendingUp,
   WandSparkles,
   Zap,
 } from 'lucide-react';
 import { BulkBar, Empty, Skeleton, TrackList } from './Browse';
 import { VIBES, customVibe } from '../lib/vibes';
 
-const ICONS = { Brain, Car, CloudRain, Coffee, Disc3, Drum, Dumbbell, Flame, HeartHandshake, PartyPopper, Radio: RadioIcon, Sun, WandSparkles, Zap };
+const ICONS = {
+  Brain,
+  Car,
+  CloudRain,
+  Coffee,
+  Disc3,
+  Dumbbell,
+  Feather,
+  Flame,
+  Gem,
+  Guitar,
+  HeartHandshake,
+  Mic2,
+  Music2,
+  PartyPopper,
+  Radio: RadioIcon,
+  Sparkle,
+  Star,
+  Sun,
+  TrendingUp,
+  WandSparkles,
+  Zap,
+};
 
 function VibeTile({ vibe, playing, loading, onStart }) {
   const Icon = ICONS[vibe.icon] || Sparkles;

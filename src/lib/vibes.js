@@ -10,19 +10,29 @@ import { getPlaylist, searchPlaylists } from './api';
 import { buildStation } from './radio';
 
 export const VIBES = [
+  // what's hot
+  { id: 'trending-hindi', name: 'Trending Hindi', hint: 'What everyone’s playing now', query: 'trending hindi songs', icon: 'TrendingUp', hue: 0 },
+  { id: 'pop-hits', name: 'Pop Hits', hint: 'Today’s English pop', query: 'english pop hits', icon: 'Star', hue: 290 },
+  // moods & moments
   { id: 'gym', name: 'Gym', hint: 'High-energy workout hits', query: 'workout hits', icon: 'Dumbbell', hue: 8 },
   { id: 'gym-hindi', name: 'Gym Hindi', hint: 'Bollywood workout bangers', query: 'hindi gym workout songs', icon: 'Flame', hue: 24 },
   { id: 'focus', name: 'Work Focus', hint: 'Mostly instrumental electronic', query: 'electronic focus music', icon: 'Brain', hue: 205 },
   { id: 'lofi', name: 'Lofi', hint: 'Chill beats to study to', query: 'lofi girl', icon: 'Coffee', hue: 265 },
   { id: 'party', name: 'Party', hint: 'Dance-floor hits', query: 'party dance hits', icon: 'PartyPopper', hue: 315 },
   { id: 'bollywood-party', name: 'Bollywood Party', hint: 'Shaadi & club anthems', query: 'bollywood party songs', icon: 'Disc3', hue: 335 },
-  { id: 'punjabi', name: 'Punjabi Hits', hint: 'Bhangra & Punjabi pop', query: 'punjabi hit songs', icon: 'Zap', hue: 45 },
-  { id: 'haryanvi', name: 'Haryanvi Hits', hint: 'Masoom Sharma, Sapna & more', query: 'haryanvi songs', icon: 'Drum', hue: 95 },
   { id: 'romantic-hindi', name: 'Romantic Hindi', hint: 'Bollywood love songs', query: 'hindi romantic songs', icon: 'HeartHandshake', hue: 350 },
   { id: 'sad-hindi', name: 'Sad Hindi', hint: 'Heartbreak & feels', query: 'hindi sad songs', icon: 'CloudRain', hue: 220 },
-  { id: 'retro-bollywood', name: '90s Bollywood', hint: 'Evergreen classics', query: '90s bollywood hits', icon: 'Radio', hue: 30 },
+  { id: 'unplugged', name: 'Unplugged', hint: 'Acoustic Bollywood', query: 'bollywood unplugged', icon: 'Guitar', hue: 32 },
   { id: 'chill', name: 'Chill', hint: 'Easy, feel-good songs', query: 'chill vibes songs', icon: 'Sun', hue: 170 },
   { id: 'road-trip', name: 'Road Trip', hint: 'Windows-down singalongs', query: 'road trip songs', icon: 'Car', hue: 120 },
+  // genres & eras
+  { id: 'punjabi', name: 'Punjabi Hits', hint: 'Bhangra & Punjabi pop', query: 'punjabi hit songs', icon: 'Zap', hue: 45 },
+  { id: 'hindi-indie', name: 'Hindi Indie', hint: 'Anuv Jain & new voices', query: 'hindi indie songs', icon: 'Feather', hue: 150 },
+  { id: 'hindi-hiphop', name: 'Hindi Hip Hop', hint: 'Divine, Emiway, KR$NA & more', query: 'hindi rap songs', icon: 'Mic2', hue: 230 },
+  { id: 'sufi', name: 'Sufi', hint: 'Soulful qawwali & Coke Studio', query: 'sufi songs', icon: 'Sparkle', hue: 40 },
+  { id: 'retro-bollywood', name: '90s Bollywood', hint: 'Evergreen classics', query: '90s bollywood hits', icon: 'Radio', hue: 30 },
+  { id: 'old-gold', name: 'Old is Gold', hint: 'Kishore, Lata, Rafi', query: 'old hindi songs kishore kumar lata mangeshkar', icon: 'Gem', hue: 48 },
+  { id: 'k-pop', name: 'K-Pop', hint: 'Korean pop hits', query: 'kpop hits', icon: 'Music2', hue: 325 },
 ];
 
 /** A vibe for anything the user types, e.g. "arijit sad songs". */
