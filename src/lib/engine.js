@@ -15,6 +15,33 @@ const START_EXTRA_MS = 10000;
 const STALL_TIMEOUT_MS = 10000;
 // say what's going on if finding a server takes a while
 const SLOW_NOTE_MS = 3000;
+// how long "the servers can't play the next song" stays true before we'd check again
+const VERDICT_TTL_MS = 5 * 60 * 1000;
+const CHECK_TIMEOUT_MS = 12000;
+
+/**
+ * Resolves once a stream has actually started delivering playable audio, rejects if it errors or
+ * stays silent. Uses a throwaway, muted element that's thrown away right after (a few hundred KB).
+ */
+function canStart(url, cors) {
+  return new Promise((resolve, reject) => {
+    const a = document.createElement('audio');
+    a.muted = true;
+    a.preload = 'auto';
+    if (cors) a.crossOrigin = 'anonymous';
+    const done = (ok) => {
+      clearTimeout(timer);
+      a.removeAttribute('src');
+      a.load();
+      if (ok) resolve();
+      else reject(new Error('Stream did not start'));
+    };
+    const timer = setTimeout(() => done(false), CHECK_TIMEOUT_MS);
+    a.addEventListener('canplay', () => done(true), { once: true });
+    a.addEventListener('error', () => done(false), { once: true });
+    a.src = url;
+  });
+}
 
 let ytApiPromise = null;
 function loadYouTubeApi() {
@@ -105,6 +132,8 @@ export class PlayerEngine extends EventTarget {
     this.effect = effectById('normal');
     this.fx = null;
     this.fadeLevel = 1; // sleep timer fade-out
+    // videoId -> { ok, at } | { checking }: can an ad-free server play the upcoming song?
+    this.verdicts = new Map();
 
     this.embedEl = document.createElement('div');
     this.embedEl.className = 'embed-host';
@@ -177,6 +206,14 @@ export class PlayerEngine extends EventTarget {
       this.stopNative();
       this.set({ ...INITIAL_STATE });
       return this.loadEmbed(token, startAt, autoplay, 'off');
+    }
+    // checked during the last song: no ad-free server can play this one, so don't make you wait
+    const verdict = this.verdicts.get(track.id);
+    if (verdict && verdict.ok === false && Date.now() - verdict.at < VERDICT_TTL_MS) {
+      this.verdicts.delete(track.id); // next time (e.g. pressing previous) try the servers again
+      this.stopNative();
+      this.set({ ...INITIAL_STATE });
+      return this.loadEmbed(token, startAt, autoplay, 'skipped');
     }
     this.set({ ...INITIAL_STATE, status: 'loading', mode: 'native' });
     await this.loadNative(token, startAt, autoplay);
@@ -336,7 +373,12 @@ export class PlayerEngine extends EventTarget {
       status: 'loading',
       showVideo: true,
       source: { type: 'youtube', base: 'youtube-nocookie.com', reason },
-      note: reason === 'fallback' ? 'No ad-free server worked, so using the YouTube player' : null,
+      note:
+        reason === 'fallback'
+          ? 'No ad-free server worked, so using the YouTube player'
+          : reason === 'skipped'
+            ? 'Ad-free servers aren’t working right now, so this song went straight to the YouTube player'
+            : null,
     });
 
     let YT;
@@ -487,6 +529,36 @@ export class PlayerEngine extends EventTarget {
     } catch {
       /* no server could describe it right now: it will just stream when its turn comes */
     }
+  }
+
+  /**
+   * Checks, while the current song plays, whether an ad-free server can really play `track`
+   * (servers sometimes answer but hand out streams that don't play). If none can, that song
+   * starts straight in the YouTube player instead of spending 15–25 seconds trying them first.
+   * Resolves to true / false (or undefined when there's nothing to check).
+   */
+  async checkNext(track) {
+    if (!track || !this.adFree || track.id === this.track?.id) return undefined;
+    const known = this.verdicts.get(track.id);
+    if (known?.ok && Date.now() - known.at < VERDICT_TTL_MS) return true;
+    if (known?.checking) return known.checking;
+    const checking = (async () => {
+      try {
+        const info = await getVideo(track.id);
+        const stream = pickAudio(info.audio, this.video, { preferred: this.preferredLang }) || pickVideo(info.video, this.video);
+        if (!stream) return false;
+        await canStart(stream.url, !!this.fx);
+        return true;
+      } catch {
+        return false;
+      }
+    })();
+    this.verdicts.set(track.id, { checking });
+    const ok = await checking;
+    this.verdicts.set(track.id, { ok, at: Date.now() });
+    // only a handful of songs are ever "next"; don't let this grow
+    if (this.verdicts.size > 20) this.verdicts.delete(this.verdicts.keys().next().value);
+    return ok;
   }
 
   /** Preferred dub language from Settings ('hi', 'es', … or null for the original); applies right away. */

@@ -25,11 +25,11 @@
 
 **Playback**
 - 🎧 **Ad-free audio** streamed through open-source YouTube front-ends ([Piped](https://github.com/TeamPiped/Piped) / [Invidious](https://invidious.io))
-- 🔁 **Fast automatic failover**: servers are raced and the first to answer wins; a song that stalls switches to another server mid-way without losing its place, and dead servers are skipped for a while. If all fail, it falls back to the official YouTube player
+- 🔁 **Fast automatic failover**: servers are raced and the first to answer wins; a song that stalls switches to another server mid-way without losing its place, and dead servers are skipped for a while. If all fail, it falls back to the official YouTube player, and while a song plays the app checks ahead whether the next one can play ad-free, so it never waits on broken servers
 - ⚡ **Instant skips**: like Spotify, the next song's audio downloads in the background (half a minute into the current one), so skipping or moving on starts instantly and plays from memory without stalls. Light on memory: audio only, at most two songs held (~4 MB each), long videos skipped. Turn on **Data saver** in Settings to switch this off
 - 🎚️ **Sound effects**: one tap for *Slowed + Reverb*, *Nightcore* or *8D audio* (sound circling your head) on any song, live
 - 🌙 **Sleep timer**: stop after 15 min – 2 hours or at the end of the song, with a gentle fade-out
-- 🪟 **Mini player**: a small always-on-top window with controls while you work in other apps (Chrome / Edge)
+- 🪟 **Mini player**: a small always-on-top window while you work in other apps, Spotify-style: search, seek bar, volume, shuffle, repeat and keyboard shortcuts (Chrome / Edge)
 - 🎉 **Party queue links**: share your lineup as a link; whoever opens it gets the same songs
 - 📺 **Ad-free servers can be turned off** in Settings (or with `Alt` + `S`) to always use the regular YouTube player
 - 🔍 **Search** by song or video name, with a *Videos / Songs* filter

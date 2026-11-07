@@ -47,6 +47,8 @@ const SEARCH_DEBOUNCE_MS = 400;
 const HISTORY_LIMIT = 100;
 // seconds into a song before the next one is downloaded (skipped earlier = nothing wasted)
 const PRELOAD_AFTER_S = 30;
+// a failed "can the servers play the next song?" check is retried this long before the song ends
+const RECHECK_BEFORE_END_S = 25;
 const IDLE_SEARCH = { status: 'idle', query: '', filter: 'videos', tracks: [], playlist: null, error: null };
 
 // `fromRadio` marks songs autoplay picked, so skipping them can teach the radio
@@ -733,12 +735,30 @@ export default function App() {
   useEffect(() => {
     if (engineState.status !== 'playing' || !upNextId || !settings.adFree) return;
     const link = setTimeout(() => getVideo(upNextId).catch(() => {}), 8000);
-    const audio = settings.dataSaver
-      ? null
-      : setTimeout(() => engine.preloadNext(upNextRef.current), Math.max(0, PRELOAD_AFTER_S - engine.currentTime) * 1000);
+    // Half a minute in: can an ad-free server really play the next song? If not, it will start
+    // straight in the YouTube player. If it can (and Data saver is off), download it for an instant start.
+    const prepare = async () => {
+      const ok = await engine.checkNext(upNextRef.current);
+      if (ok && !settings.dataSaver) engine.preloadNext(upNextRef.current);
+    };
+    const first = setTimeout(prepare, Math.max(0, PRELOAD_AFTER_S - engine.currentTime) * 1000);
+    // servers often come back: if that check failed, look again shortly before this song ends
+    const rate = engine.effect?.rate || 1;
+    const left = (engine.duration - engine.currentTime) / rate;
+    const late =
+      left > PRELOAD_AFTER_S + RECHECK_BEFORE_END_S
+        ? setTimeout(() => {
+            const v = engine.verdicts.get(upNextId);
+            if (v && v.ok === false) {
+              engine.verdicts.delete(upNextId);
+              prepare();
+            }
+          }, (left - RECHECK_BEFORE_END_S) * 1000)
+        : null;
     return () => {
       clearTimeout(link);
-      clearTimeout(audio);
+      clearTimeout(first);
+      clearTimeout(late);
     };
   }, [engineState.status === 'playing', upNextId, settings.dataSaver]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -1117,6 +1137,11 @@ export default function App() {
             onToggleFavourite={() => current && toggleFavourite(current)}
             onPrev={prev}
             onNext={() => next()}
+            settings={settings}
+            onUpdateSettings={updateSettings}
+            onShuffle={toggleShuffle}
+            onPlayNow={playNow}
+            onAddToQueue={(t) => addToQueue([t])}
           />
         )}
 
