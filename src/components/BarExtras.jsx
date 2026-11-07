@@ -10,17 +10,30 @@ function usePopover() {
   return { open, setOpen, ref };
 }
 
-/** ✨ Sound: Normal / Slowed + Reverb / Nightcore / 8D. */
-export function EffectsMenu({ effect, available, onChange }) {
+const UNAVAILABLE = {
+  off: 'Sound effects need the ad-free servers, which are turned off in Settings',
+  down: 'Sound effects need an ad-free server, and none is working right now. They’ll come back on their own.',
+  idle: 'Play a song to use sound effects',
+};
+
+/**
+ * ✨ Sound: Normal / Slowed + Reverb / Nightcore / 8D.
+ * `unavailable` ('off' | 'down' | 'idle' | null): effects can't run, so the button is greyed out.
+ */
+export function EffectsMenu({ effect, unavailable, onChange }) {
   const { open, setOpen, ref } = usePopover();
-  const active = effect !== 'normal';
+  const active = effect !== 'normal' && !unavailable;
   const current = EFFECTS.find((e) => e.id === effect) || EFFECTS[0];
+  useEffect(() => {
+    if (unavailable) setOpen(false);
+  }, [unavailable, setOpen]);
   return (
     <div className="bar-menu" ref={ref}>
       <button
         className={`icon-btn pill-btn ${active ? 'is-on' : ''} ${open ? 'is-open' : ''}`}
         onClick={() => setOpen((o) => !o)}
-        title={active ? `Sound: ${current.name}` : 'Sound effects'}
+        disabled={!!unavailable}
+        title={unavailable ? UNAVAILABLE[unavailable] : active ? `Sound: ${current.name}` : 'Sound effects'}
         aria-haspopup="menu"
         aria-expanded={open}
       >
@@ -30,7 +43,6 @@ export function EffectsMenu({ effect, available, onChange }) {
       {open && (
         <div className="bar-pop" role="menu" aria-label="Sound effects">
           <p className="label">Sound</p>
-          {!available && <p className="pop-note">Effects work with ad-free servers. They’ll apply when the next song uses one.</p>}
           <ul>
             {EFFECTS.map((e) => {
               const on = e.id === effect;

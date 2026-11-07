@@ -191,7 +191,11 @@ export default function PlayerBar({
 
       <div className="bar-right">
         <LanguageMenu engine={engine} state={state} />
-        <EffectsMenu effect={effect} available={state.mode !== 'embed'} onChange={onEffect} />
+        <EffectsMenu
+          effect={effect}
+          unavailable={!track ? 'idle' : state.mode === 'embed' ? (state.source?.reason === 'off' ? 'off' : 'down') : null}
+          onChange={onEffect}
+        />
         <SleepMenu sleep={sleep} onSet={onSleep} />
         <MiniPlayerButton open={miniOpen} onToggle={onToggleMini} disabled={!track} />
         <button
