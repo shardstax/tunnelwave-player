@@ -1,11 +1,14 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Analytics } from '@vercel/analytics/react';
 import App from './App';
 import './styles.css';
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
     <App />
+    {/* anonymous visitor counts in the Vercel dashboard (no cookies, no IPs stored) */}
+    <Analytics />
   </StrictMode>,
 );
 

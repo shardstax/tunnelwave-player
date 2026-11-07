@@ -21,6 +21,8 @@ self.addEventListener('fetch', (event) => {
   const { request } = event;
   const url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== self.location.origin) return;
+  // Vercel's analytics script is served from this site but must stay up to date
+  if (url.pathname.startsWith('/_vercel/')) return;
 
   if (request.mode === 'navigate') {
     // network first so new versions show up, cached page when offline
