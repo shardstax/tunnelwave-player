@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { ChevronDown, ChevronUp, ChevronsRight, Heart, Loader2, Maximize, MicVocal, Music2, ShieldCheck, TriangleAlert, Youtube } from 'lucide-react';
-import { useEngineState, useEngineTime } from '../lib/hooks';
+import { ChevronDown, ChevronUp, ChevronsRight, Heart, Loader2, Maximize, MicVocal, Music2, ShieldCheck, TriangleAlert, Video, VideoOff, Youtube } from 'lucide-react';
+import { useEngineState, useEngineTime, useLocalStorage } from '../lib/hooks';
 import { getSkipSegments, skipLabel } from '../lib/skips';
 import { thumbnail } from '../lib/youtube';
 
@@ -75,8 +75,11 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite, o
     hostRef.current.append(engine.video, engine.embedEl);
   }, [engine]);
 
-  // audio-only app: the picture is only shown for the YouTube embed fallback
-  const showMedia = state.mode === 'embed';
+  // Audio-only app. The YouTube player (used when ad-free servers are off or down) always plays
+  // video, so the artwork covers it like in ad-free mode; "Show video" reveals it when wanted.
+  const [videoOn, setVideoOn] = useLocalStorage('tq.showVideo', false);
+  const isEmbed = state.mode === 'embed';
+  const showMedia = isEmbed && videoOn;
   const playing = state.status === 'playing';
 
   const fullscreen = () => {
@@ -84,7 +87,7 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite, o
     else stageRef.current.requestFullscreen?.().catch(() => {});
   };
 
-  const classes = ['hero', compact && 'is-compact', !track && 'is-empty', showMedia && 'is-embed'].filter(Boolean).join(' ');
+  const classes = ['hero', compact && 'is-compact', !track && 'is-empty', isEmbed && 'is-embed'].filter(Boolean).join(' ');
 
   return (
     <section className={classes} aria-label="Now playing">
@@ -94,7 +97,8 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite, o
       <div className="hero-art">
         {track && !showMedia && <span className={`vinyl ${playing ? 'is-spinning' : ''}`} />}
         <div className="stage" ref={stageRef}>
-          <div ref={hostRef} className={`stage-media ${showMedia ? '' : 'is-hidden'}`} data-mode={state.mode} />
+          {/* the YouTube player stays laid out under the artwork (hiding it can stop playback) */}
+          <div ref={hostRef} className={`stage-media ${isEmbed ? '' : 'is-hidden'}`} data-mode={state.mode} />
           {track && !showMedia && (
             <img
               key={track.id}
@@ -153,6 +157,16 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite, o
             >
               <MicVocal size={18} />
             </button>
+            {isEmbed && (
+              <button
+                className={`icon-btn ${videoOn ? 'is-on' : ''}`}
+                onClick={() => setVideoOn((on) => !on)}
+                title={videoOn ? 'Hide video (audio only)' : 'Show video'}
+                aria-pressed={videoOn}
+              >
+                {videoOn ? <VideoOff size={18} /> : <Video size={18} />}
+              </button>
+            )}
             {showMedia && (
               <button className="icon-btn" onClick={fullscreen} title="Fullscreen video">
                 <Maximize size={17} />
