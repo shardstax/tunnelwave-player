@@ -3079,3 +3079,26 @@ kbd {
   font: inherit;
   cursor: pointer;
 }
+
+/* "Play on YouTube now" next to the slow-server note */
+.now-note {
+  flex-wrap: wrap;
+}
+
+.now-note-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #111;
+  background: #fff;
+  transition: transform 0.15s;
+}
+
+.now-note-btn:hover {
+  transform: translateY(-1px);
+}

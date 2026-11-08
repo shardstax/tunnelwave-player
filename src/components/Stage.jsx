@@ -7,9 +7,13 @@ import { burstHearts } from '../lib/hearts';
 
 function SourceBadge({ state }) {
   if (!state.source) return null;
-  if (state.source.type === 'youtube' && state.source.reason === 'off') {
+  if (state.source.type === 'youtube' && (state.source.reason === 'off' || state.source.reason === 'chosen')) {
+    const why =
+      state.source.reason === 'off'
+        ? 'Ad-free servers are turned off in Settings, so the official YouTube player is used.'
+        : 'You chose the YouTube player for this song. The next song tries the ad-free servers again.';
     return (
-      <span className="badge badge-warn" title="Ad-free servers are turned off in Settings, so the official YouTube player is used.">
+      <span className="badge badge-warn" title={why}>
         <Youtube size={13} /> YouTube player
       </span>
     );
@@ -142,6 +146,12 @@ export default function Stage({ engine, track, isFavourite, onToggleFavourite, o
             {state.note && (
               <p className="now-note" role="status">
                 {state.status === 'loading' && <Loader2 className="spin" size={13} />} {state.note}
+                {/* don't want to wait for a slow server? skip straight to YouTube */}
+                {state.status === 'loading' && state.mode === 'native' && (
+                  <button className="now-note-btn" onClick={() => engine.useYouTubeNow()}>
+                    <Youtube size={13} /> Play on YouTube now
+                  </button>
+                )}
               </p>
             )}
           </div>

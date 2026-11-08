@@ -15,6 +15,8 @@ const START_EXTRA_MS = 10000;
 const STALL_TIMEOUT_MS = 10000;
 // say what's going on if finding a server takes a while
 const SLOW_NOTE_MS = 3000;
+// after a server fails mid-load, how long to look for another before using the YouTube player
+const RETRY_LOOKUP_MS = 4000;
 // how long "the servers can't play the next song" stays true before we'd check again
 const VERDICT_TTL_MS = 5 * 60 * 1000;
 const CHECK_TIMEOUT_MS = 12000;
@@ -226,7 +228,16 @@ export class PlayerEngine extends EventTarget {
       if (token === this.token && !this.state.note) this.set({ note: 'Looking for a working server…' });
     }, SLOW_NOTE_MS);
     try {
-      info = await getVideo(this.track.id, { exclude: this.excluded });
+      const lookup = getVideo(this.track.id, { exclude: this.excluded });
+      // A server already let this song down. Don't keep you waiting while the rest are tried one
+      // round after another: if none answers quickly, go straight to the YouTube player.
+      info =
+        this.attempts > 0
+          ? await Promise.race([
+              lookup,
+              new Promise((_, reject) => setTimeout(() => reject(new Error('No quick replacement')), RETRY_LOOKUP_MS)),
+            ])
+          : await lookup;
     } catch (e) {
       if (token === this.token) this.loadEmbed(token, startAt, autoplay, 'fallback');
       return;
@@ -493,6 +504,19 @@ export class PlayerEngine extends EventTarget {
     }
     if (running) this.pause();
     else this.play();
+  }
+
+  /**
+   * "Play on YouTube now": stop waiting for a slow ad-free server and play this song in the
+   * YouTube player right away. Only this song; the next one tries the servers again.
+   */
+  useYouTubeNow() {
+    if (!this.track || this.state.mode !== 'native') return;
+    const at = this.video.currentTime > 0 ? this.video.currentTime : this.resumeAt || 0;
+    // a new token, so the server lookup still running can't take the song back when it finishes
+    const token = ++this.token;
+    this.wantPlay = true;
+    this.loadEmbed(token, at, true, 'chosen');
   }
 
   /** Turn the ad-free servers on or off (Settings). Reloads the current song where it was. */
